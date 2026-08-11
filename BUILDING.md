@@ -53,16 +53,61 @@ git clone https://github.com/Ryzee119/tusb_xinput.git src/lib/tusb_xinput
 git clone https://github.com/hathach/tinyusb.git src/lib/tinyusb
 ```
 
-**The TinyUSB revision is unknown.** Because the gitlink is missing there is no
-recorded commit, and neither 0.17.0 nor 0.18.0 compiles against the in-tree USB
-host glue (`usbh.c: 'AUDIO_SUBCLASS_CONTROL' undeclared`). Whoever knows the
-revision that upstream builds against should register it properly:
+**Which TinyUSB revision?** The gitlink is missing so nothing is recorded, but
+the range can be narrowed from the code:
+
+`src/USB_Host_driver/tusb_config.h` sets `CFG_TUH_MIDI 1`. Under that guard
+`usbh.c` uses `AUDIO_SUBCLASS_CONTROL`, and the only thing that brings that
+definition in is `tusb.h` -> `class/midi/midi_host.h` -> `class/audio/audio.h`.
+`midi_host.h` (native MIDI host support) **first exists in 0.19.0**, so anything
+older fails with:
+
+```
+usbh.c: error: 'AUDIO_SUBCLASS_CONTROL' undeclared
+```
+
+That gives a hard lower bound. Verified by building the full firmware:
+
+| TinyUSB | Result |
+| ------- | ------ |
+| <= 0.18.0 | does not compile, no `midi_host.h` |
+| 0.19.0  | builds, but `xinput_host.c` warns: incompatible pointer type |
+| 0.20.0  | builds, same warning |
+| **0.21.0** | **builds clean** |
+
+The warning on 0.19/0.20 is not cosmetic. TinyUSB changed
+`usbh_class_driver_t::open()` from returning `bool` to returning a `uint16_t`
+descriptor length; `tusb_xinput` at current master uses the new signature, so on
+0.19/0.20 a `true` return is read as "driver length 1" and xinput controller
+enumeration would misbehave at runtime.
+
+So **0.21.0 is the recommendation**, and it is also the only tag consistent with
+current `tusb_xinput`. Note that `tusb_xinput` has no recorded revision either,
+so if upstream pinned an older one, 0.19.0/0.20.0 could be what they use.
+
+Both should be registered properly:
 
 ```
 git submodule add https://github.com/hathach/tinyusb src/lib/tinyusb
+git submodule add https://github.com/Ryzee119/tusb_xinput src/lib/tusb_xinput
 ```
 
 `WonderMCA` is only needed for `PICOMEM_BOARD "WONDERMCA_10"`.
+
+### The xinput link step
+
+`src/USB_Host_Driver2/CMakeLists.txt` opens with a note to self:
+
+```
+# !! Remove link of tinyusb in xinput CMakefile !!
+```
+
+That refers to `target_link_libraries(xinput_host INTERFACE tinyusb)` in
+`src/lib/tusb_xinput/CMakeLists.txt`. It has to go, otherwise the link ends with
+`cannot find -ltinyusb` — the TinyUSB sources are already compiled straight into
+the `picomem` target. `tools/build-linux.sh` does this automatically in the
+staged copy. A `git submodule add` of tusb_xinput would make this a permanent
+local edit, so it may be worth carrying a patched copy or upstreaming the change.
 
 ## 4. Directory name case
 
@@ -91,14 +136,14 @@ one name would fix Linux builds for good.
 
 ```
 export PICO_SDK_PATH=/path/to/pico-sdk
-./tools/build-linux.sh --no-usb
+./tools/build-linux.sh
 ```
 
 The script copies `src/` to a temporary directory, merges the two case-variant
-USB directories there, configures and builds. It never modifies the working
-tree. Output: `build/picomem.uf2`.
+USB directories there, drops the xinput tinyusb link, configures and builds. It
+never modifies the working tree. Output: `build/picomem.uf2`.
 
-`--no-usb` is required for now because of item 3. It also has to stub out
+`--no-usb` builds with `DO_USBHOST 0`. It additionally has to stub out
 `pm_libs/inputs/pm_inputs.c` and `inputs/players/player.c` in the staged copy:
 `pm_libs` compiles them unconditionally and both include `tusb.h` through
 `inputs/manager.h`, so with the USB host off the TinyUSB include paths are not
@@ -106,15 +151,18 @@ set and they cannot build. Guarding those two sources with `if (DO_USBHOST)` in
 `src/pm_libs/CMakeLists.txt` would make `DO_USBHOST 0` a supported
 configuration and let the flag drop the stubbing.
 
-Once the TinyUSB revision is pinned, drop `--no-usb` for a full build.
+## Measured footprint (PICOMEM_20, TinyUSB 0.21.0)
 
-## Measured footprint (PICOMEM_20, `DO_USBHOST 0`)
+| Configuration                        | FLASH   | RAM (of 512 KB) |
+| ------------------------------------ | ------- | --------------- |
+| `DO_USBHOST 0`, `USE_PM_NET 0`       | 4650420 | 353248 (67.4%)  |
+| `DO_USBHOST 0`, `USE_PM_NET 1`       | 4702764 | 420204 (80.2%)  |
+| `DO_USBHOST 1`, `USE_PM_NET 0`       | 4725084 | 376400 (71.8%)  |
+| **`DO_USBHOST 1`, `USE_PM_NET 1`**   | 4777428 | **443356 (84.6%)** |
 
-|                       | FLASH   | RAM (of 512 KB) |
-| --------------------- | ------- | --------------- |
-| `USE_PM_NET 0`        | 4650420 | 353248 (67.4%)  |
-| `USE_PM_NET 1`        | 4702764 | 420204 (80.2%)  |
-| **FTP server cost**   | +51 KB  | **+65 KB**      |
+The FTP server costs a flat **65 KB of RAM** (its buffers are static, so the
+figure does not change with the USB host on or off) and about 51 KB of flash.
+Everything enabled leaves roughly 79 KB of RAM free.
 
 See `src/ne2000/README_FTP.md` for what makes up the 65 KB and which knobs to
-turn if a build with USB host enabled runs short of RAM.
+turn should a future feature need that headroom back.

@@ -52,6 +52,30 @@ if [ -d "$STAGE_DIR/USB_Host_driver" ] && [ -d "$STAGE_DIR/USB_Host_Driver" ]; t
     cp -rn "$STAGE_DIR/USB_Host_driver/." "$STAGE_DIR/USB_Host_Driver/"
 fi
 
+if [ "$NO_USB" = 0 ]; then
+    # tusb_config.h sets CFG_TUH_MIDI 1. usbh.c uses AUDIO_SUBCLASS_CONTROL under
+    # that guard and only gets the definition through tusb.h -> midi_host.h ->
+    # class/audio/audio.h. midi_host.h (native MIDI host) first exists in
+    # TinyUSB 0.19.0, so anything older fails to compile. Say so plainly rather
+    # than letting it surface as an undeclared identifier.
+    if [ ! -f "$STAGE_DIR/lib/tinyusb/src/class/midi/midi_host.h" ]; then
+        echo "TinyUSB at src/lib/tinyusb is too old: no class/midi/midi_host.h." >&2
+        echo "CFG_TUH_MIDI needs 0.19.0 or newer (0.21.0 recommended)." >&2
+        echo "See BUILDING.md section 3." >&2
+        exit 1
+    fi
+
+    # Documented at the top of USB_Host_Driver2/CMakeLists.txt:
+    # "!! Remove link of tinyusb in xinput CMakefile !!". Without this the link
+    # fails with "cannot find -ltinyusb", since the TinyUSB sources are already
+    # compiled into the picomem target.
+    if grep -q "INTERFACE tinyusb)" "$STAGE_DIR/lib/tusb_xinput/CMakeLists.txt" 2>/dev/null; then
+        echo "==> Removing the tinyusb link from tusb_xinput (see USB_Host_Driver2/CMakeLists.txt)"
+        sed -i 's|^target_link_libraries(xinput_host INTERFACE tinyusb)|# removed by tools/build-linux.sh, see USB_Host_Driver2/CMakeLists.txt|' \
+            "$STAGE_DIR/lib/tusb_xinput/CMakeLists.txt"
+    fi
+fi
+
 if [ "$NO_USB" = 1 ]; then
     echo "==> Forcing DO_USBHOST 0 in the staged copy"
     sed -i 's/^\( *\)set(DO_USBHOST 1)/\1set(DO_USBHOST 0)/' "$STAGE_DIR/CMakeLists.txt"
