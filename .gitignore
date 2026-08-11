@@ -1,3 +1,14 @@
 .vscode
 build
 *.LST
+
+# Submodule paths declared in .gitmodules that have no gitlink in the index, so
+# git does not manage them itself and a local clone shows up as untracked.
+# Ignored here so a stray `git add` cannot vendor these third party trees into
+# the repository (TinyUSB alone is 28MB / 2200 files, and its revision is not
+# recorded anywhere). See BUILDING.md for how to obtain them.
+# Drop the matching line if the submodule is ever registered properly with
+# `git submodule add`.
+/src/lib/tinyusb/
+/src/lib/tusb_xinput/
+/WonderMCA/
