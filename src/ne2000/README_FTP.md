@@ -110,6 +110,34 @@ For the same reason the build links plain `pico_lwip` rather than
 Work is bounded per poll — 6 frames, one 4KB file chunk, 12 directory entries —
 so a busy transfer cannot add latency to a PC disk access.
 
+### RAM budget
+
+Measured on `PICOMEM_20` with `DO_USBHOST 0`, by building the same tree with
+`USE_PM_NET` set to 0 and to 1:
+
+| `USE_PM_NET` | FLASH   | RAM (of 512 KB) |
+| ------------ | ------- | --------------- |
+| 0            | 4650420 | 353248 (67.4%)  |
+| 1            | 4702764 | 420204 (80.2%)  |
+
+So the server costs about **65 KB of RAM** and 51 KB of flash, made up of:
+
+| | |
+| --- | --- |
+| lwIP pbuf pool (`PBUF_POOL_SIZE` 16) | ~25 KB |
+| lwIP heap (`MEM_SIZE`) | 16 KB |
+| receive ring (`PM_NET_RX_SLOTS` 10 x 1536) | 15 KB |
+| FTP file buffer (`FTP_CHUNK`) | 4 KB |
+| netif transmit buffer | 1.6 KB |
+| pcbs and lwIP statics | ~3 KB |
+
+Those figures are with the USB host disabled, which is the only configuration
+that currently builds on Linux (see `BUILDING.md`). If enabling USB host as well
+runs the 512 KB short, the cheapest cuts are `PM_NET_RX_SLOTS` in `pm_net.c`
+(each slot is 1.5 KB, 6 is still comfortable) and `PBUF_POOL_SIZE` in
+`lwipopts_common.h`. Dropping `TCP_WND`/`TCP_SND_BUF` below 4 MSS starts to cost
+real transfer speed. Setting `USE_PM_NET 0` removes all of it.
+
 ### Why PicoMEM 2 only
 
 On the PicoMEM 1.x the microSD shares its SPI bus with the PSRAM. `PM_EnableSD()`
