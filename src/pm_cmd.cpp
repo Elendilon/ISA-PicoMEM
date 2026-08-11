@@ -57,6 +57,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pico/cyw43_arch.h"
 #include "cyw43.h"
 #include "cyw43_stats.h"
+#include "pm_net.h"      // On board TCP/IP stack (FTP server)
 #endif
 
 #include "pm_debug.h"
@@ -2306,6 +2307,13 @@ if (absolute_time_diff_us(get_absolute_time(), pm_cmd_100msdelay) < 0)
 
     pm_cmd_100msdelay = make_timeout_time_us(100000);  // Update the 100ms delay value (100000 is 100ms)
   } // 100ms delay end (For Display update)
+
+#if PM_WIFI
+// On board TCP/IP stack : this is the only place lwIP is entered, so the FTP
+// server file access runs in the same context as the Int13h code below and
+// FatFs stays single threaded (FF_FS_REENTRANT=0).
+pm_net_poll();
+#endif
 
 if (multicore_fifo_rvalid())
   {

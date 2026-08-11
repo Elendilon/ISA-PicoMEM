@@ -58,6 +58,18 @@ set(PICOMEM_BOARD "PICOMEM_20")
 
  set(FAST_RAM 0)   # 1 to enable the Fast RAM Mode (No PSRAM based memory)
 
+# On board TCP/IP stack (lwIP) + FTP server, to access the microSD/USB over
+# WiFi. Set to 0 to save the ~60KB of RAM it needs.
+#
+# !! PicoMEM 2 only for now !!
+# On the PicoMEM 1.x the microSD shares its SPI bus with the PSRAM, so taking
+# the bus for a file transfer while the PC is executing from PSRAM backed
+# memory would crash the PC. Today the card is only ever touched while the PC
+# is parked inside a BIOS call (see BV_SPIPSRAM / PM_EnableSD), which an
+# asynchronous FTP transfer is not. The PicoMEM 2 has a dedicated SPI bus for
+# the microSD (see pm20.h) so it has no such constraint.
+ set(USE_PM_NET 1)
+
 #set(CMAKE_BUILD_TYPE "Debug")
 set(CMAKE_BUILD_TYPE "Release")
 set(PROJECT_TYPE "TEST")
@@ -101,6 +113,12 @@ endif()
 
 if (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
     add_subdirectory(wondermca)            # WonderMCA MCA bus and devices
+endif()
+
+if (NOT PICOMEM_BOARD STREQUAL "PICOMEM_20")
+    # See the USE_PM_NET note above : the shared microSD/PSRAM SPI bus of the
+    # PicoMEM 1.x needs bus arbitration before the FTP server can be enabled.
+    set(USE_PM_NET 0)
 endif()
 
 if (PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICO_BOARD STREQUAL "pico_w")
@@ -441,15 +459,17 @@ if( PICO_BOARD STREQUAL "pico_w" OR PICOMEM_BOARD STREQUAL "PICOMEM_20")
 # CYW43 resources : One State Machine (Moved to PIO1, ISA too big)
 # 2 DMA (Automatic claim) for tx, rx
             CYW43_SPI_PIO_PREFERRED_PIO=1
-            DNS_TABLE_SIZE=2        # reduce the RAM taken by the DNS Table (Usefull ?)            
-        ) 
-    else( 
-        add_compile_definitions( 
+            DNS_TABLE_SIZE=2        # reduce the RAM taken by the DNS Table (Usefull ?)
+            USE_PM_NET=${USE_PM_NET}   # On board lwIP stack + FTP server
+        )
+    else(
+        add_compile_definitions(
             PM_WIFI=0
 # - NETWORK Defines -
             USE_NE2000=0
-         )        
-        )        
+            USE_PM_NET=0
+         )
+        )
     endif() # pico_w or PICOMEM_20
 
 if (DO_USBHOST)

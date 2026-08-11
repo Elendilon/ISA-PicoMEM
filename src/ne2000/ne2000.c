@@ -46,6 +46,7 @@ Try : https://github.com/Xilinx/qemu/blob/master/hw/net/ne2000.c
 #include "ne2000.h"
 
 #include "dev_ne2000.h"
+#include "pm_net.h"                   // On board TCP/IP stack (FTP server)
 #include "../pm_debug.h"
 #include "f_util.h"
 #include "ff.h"
@@ -207,6 +208,19 @@ uint8_t PM_ConnectWifi()
         if(f_gets(PM_Wifi.WIFI_SSID,32,&WifiConfigFile) && f_gets(PM_Wifi.WIFI_KEY,63,&WifiConfigFile)) {
                 TrimString(PM_Wifi.WIFI_SSID);
                 TrimString(PM_Wifi.WIFI_KEY);
+
+                // Lines 3 and following are optional "KEY=VALUE" settings for
+                // the on board TCP/IP stack (IP, MASK, GW, FTP, FTPUSER,
+                // FTPPASS). Older two line Wifi.txt files still work as is.
+                {
+                 char cfgline[80];
+                 while (f_gets(cfgline,sizeof(cfgline),&WifiConfigFile))
+                   {
+                    TrimString(cfgline);
+                    pm_net_parse_cfgline(cfgline);
+                   }
+                }
+
                 if(strlen(PM_Wifi.WIFI_SSID) && strlen(PM_Wifi.WIFI_KEY)) {
 
 //                   cyw43_wifi_pm(&cyw43_state,CYW43_PERFORMANCE_PM);   // Power management, Performance mode
@@ -250,40 +264,52 @@ for (;;)
                
  PM_INFO("ne2000_init\n");
  if (nic==NULL) nic = ne2000_init();  // DOS ne2000 driver crash if not init
- if (nic==NULL) 
+ if (nic==NULL)
               {
                strcpy(PM_Wifi.StatusStr,"NE2000 failed to initialized");
                return 5;
               } else NE2000_Enabled=true;
+
+ // Start the on board TCP/IP stack (and the FTP server) when an IP address is
+ // configured in Wifi.txt. It shares the cyw43 MAC with the emulated NE2000.
+ pm_net_init(PM_Wifi.cyw43_mac);
+
  return 0;
 }
 
 #define NOLWIP
 
 #ifdef NOLWIP
+#if !USE_PM_NET
 // never called but linker needs it when lwip is removed
+// (When USE_PM_NET is set, lwIP provides the real pbuf_copy_partial)
 uint16_t pbuf_copy_partial (void *buf, void *dataptr, uint16_t len, uint16_t offset)
 {
 }
+#endif
 
+// The cyw43 driver is built with CYW43_LWIP=0 (pico_cyw43_arch_none), so these
+// two link callbacks have to be provided here even when pm_net/lwIP is used.
 void cyw43_cb_tcpip_set_link_up(cyw43_t *self, int itf) {
-#if PM_PRINTF        
+#if PM_PRINTF
     PM_INFO("Link Up\n");
-#endif    
+#endif
     link_up = true;
-#if PM_WIFI_LED    
+#if PM_WIFI_LED
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_up);
-#endif    
+#endif
+    pm_net_set_link(true);
 }
 
 void cyw43_cb_tcpip_set_link_down(cyw43_t *self, int itf) {
 #if PM_PRINTF
     PM_INFO("Link Down\n");
-#endif    
+#endif
     link_up = false;
 #if PM_WIFI_LED
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_up);
-#endif    
+#endif
+    pm_net_set_link(false);
 }
 #endif
 
@@ -337,10 +363,51 @@ to lwip stack when using tcp virtual modem,  or contacting ntp servers etc.  thi
 */             
 void _cyw43_cb_process_ethernet(void *cb_data, int itf, size_t len, const uint8_t *buf);
 
-void cyw43_cb_process_ethernet(void *cb_data, int itf, size_t len, const uint8_t *buf) 
-{                                        
-  ne2000_rx_frame(nic, buf, len);             
-  CYW43_STAT_INC(PACKET_IN_COUNT);       
+/*
+Frame dispatcher, runs in the cyw43 background IRQ context.
+
+The PC (emulated NE2000) and the Pico (pm_net/lwIP) share the same MAC address
+but use two different IP addresses, so every incoming frame has to be routed to
+the right one :
+  - ARP           : to both, each side only answers for its own IP
+  - IPv4 for us   : to pm_net only. Not giving it to the NE2000 matters, it
+                    avoids waking the 8088 up for every FTP data packet.
+  - anything else : to the NE2000, exactly like before.
+
+pm_net_rx_push() only copies the frame into a ring, lwIP itself is entered from
+the Core 0 main loop (see pm_net.h).
+*/
+void cyw43_cb_process_ethernet(void *cb_data, int itf, size_t len, const uint8_t *buf)
+{
+#if USE_PM_NET
+  if (pm_net_started() && (len >= 14))
+   {
+    uint16_t ethertype = ((uint16_t)buf[12] << 8) | buf[13];
+
+    if (ethertype == 0x0806)          // ARP : both stacks need to see it
+       {
+        pm_net_rx_push(buf, (uint16_t)len);
+       }
+    else if ((ethertype == 0x0800) && (len >= 34))
+       {
+        // IPv4 destination address is at offset 14 + 16
+        if (pm_net_wants_ip(&buf[30]))
+           {
+            pm_net_rx_push(buf, (uint16_t)len);
+            // Only a unicast for us can be kept away from the PC : a broadcast
+            // (DHCP, NetBIOS...) still has to reach the DOS TCP/IP stack.
+            if (pm_net_is_our_unicast(&buf[30]))
+               {
+                CYW43_STAT_INC(PACKET_IN_COUNT);
+                return;
+               }
+           }
+       }
+   }
+#endif
+
+  ne2000_rx_frame(nic, buf, len);
+  CYW43_STAT_INC(PACKET_IN_COUNT);
 }
 
 static void ne2000_raise_irq(ne2000_t *ne2000) {                   
