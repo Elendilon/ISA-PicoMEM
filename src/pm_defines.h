@@ -210,6 +210,22 @@ If not, see <https://www.gnu.org/licenses/>.
 #define OFFS_IRQ_PARAM   IRQ_VAR_OFFS+14      // Offset of the IRQ Parameter structure (12 bytes)
 #define OFFS_PCCMDPARAM  PCCMD_OFFS+36
 
+// os8088-pm114: the DMA-port WRITE LOG (os8088's tests/pmdma reads it at the
+// BIOS segment : 4000h + DMADBG_OFFS). Every IOW the card takes as a DMA
+// register write is logged with the data byte read the stock way (EARLY: one
+// nop after the PIO flips the multiplexer to data) and read again DMADBG_WAIT
+// cycles later (LATE: the PC is held by IOCHRDY, so the byte is the one the
+// CPU is driving). DMADBG_MODE chooses which one dev_dma_iow is given, so one
+// flash is an A/B. 7K..8K of the 8K block is free: the DMA copy buffer at 6K
+// never holds more than ~191 bytes.
+#define DMADBG_OFFS   0x1C00
+#define DMADBG_MODE   (DMADBG_OFFS+8)    // 0 = the early read (stock), 1 = late
+#define DMADBG_IDX    (DMADBG_OFFS+10)   // word: writes logged, ever (wraps)
+#define DMADBG_LOG    (DMADBG_OFFS+16)   // DMADBG_N x {port, early, late, seq}
+#define DMADBG_N      128
+#define DMADBG_WAIT   280                // ~1 us at PM_SYS_CLK 280
+#define DMADBG_PIN_AD0 8                 // the bus program's PIN_AD0 (asserted)
+
 #define BV_VARID       PM_DP_RAM[0]  // ID
 #define BV_Test        PM_DP_RAM[1]  // Test
 #define BV_InitCount   PM_DP_RAM[2]  // Nb of time the PicoMEM BIOS Start

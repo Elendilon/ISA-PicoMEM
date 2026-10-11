@@ -300,3 +300,24 @@ if (BV_DMANoUpdate==0) // if=0, update the DMA regs values
  }
 }
 //#endif
+// os8088-pm114: the DMA-port write log (pm_defines.h, DMADBG_). Called from
+// the bus loop with the data read the stock way (EARLY) while IOCHRDY holds
+// the PC; reads the pins again DMADBG_WAIT cycles later (LATE), logs both and
+// hands dev_dma_iow the one DMADBG_MODE names. Out of the loop so the loop
+// still fits SCRATCH_X, and in RAM so its timing is the RAM's
+void __not_in_flash_func(dev_dma_iow_dbg)(uint32_t CTRL_AL8, uint8_t Data)
+{
+  uint8_t late;
+  uint16_t n;
+  busy_wait_at_least_cycles(DMADBG_WAIT);
+  late = (uint8_t) ((gpio_get_all() >> DMADBG_PIN_AD0) & 0xFF);
+  n = PM_DP_RAM[DMADBG_IDX] | (PM_DP_RAM[DMADBG_IDX + 1] << 8);
+  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 0] = (uint8_t) CTRL_AL8;
+  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 1] = Data;
+  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 2] = late;
+  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 3] = (uint8_t) n;
+  n++;
+  PM_DP_RAM[DMADBG_IDX] = (uint8_t) n;
+  PM_DP_RAM[DMADBG_IDX + 1] = (uint8_t) (n >> 8);
+  dev_dma_iow(CTRL_AL8, PM_DP_RAM[DMADBG_MODE] ? late : Data);
+}
