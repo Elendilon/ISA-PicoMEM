@@ -18,4 +18,4 @@ extern bool dev_dma_installed();
 extern void dev_dma_update();
 extern bool dev_dma_ior(uint32_t Addr,uint8_t *Data);
 extern void dev_dma_iow(uint32_t Addr,uint8_t Data);
-extern void dev_dma_iow_dbg(uint32_t Addr,uint8_t Data);
+extern void dev_dma_iow_dbg(uint32_t Addr,uint8_t Data,uint32_t Raw);

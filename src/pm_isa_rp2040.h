@@ -314,7 +314,7 @@ ISA_Do_IO:  // Goto, from the assembly code
            dev_sbdsp_iow(ISA_IO_Addr,ISAIOW_Data);
           break;  
         case DEV_DMA :     // os8088-pm114: logged, read twice (dev_dma.cpp)
-           dev_dma_iow_dbg(ISA_IO_Addr,ISAIOW_Data);
+           dev_dma_iow_dbg(ISA_IO_Addr,ISAIOW_Data,ISA_Addr);
           break;  
 #endif
 #endif //USE_AUDIO

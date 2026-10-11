@@ -332,8 +332,10 @@ PM_DP_RAM[0] = 0x12; //ID of The PicoMEM BIOS RAM  (Magic ID)
 
 // os8088-pm114: the DMA-port write log's header (pm_defines.h, DMADBG_)
 for (int i = 0; i < 16; i++) PM_DP_RAM[DMADBG_OFFS + i] = 0;
-{ const char *sig = "DMALOG1";
+{ const char *sig = "DMALOG2";
   for (int i = 0; i < 8; i++) PM_DP_RAM[DMADBG_OFFS + i] = (uint8_t) sig[i]; }
+PM_DP_RAM[DMADBG_NSB] = DMADBG_NS;
+PM_DP_RAM[DMADBG_ESZB] = DMADBG_ESZ;
 
 } //PM_BASE_DEV_Init
 #endif // !BOARD_WM10

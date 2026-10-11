@@ -180,3 +180,7 @@ TinyUSB recommended above: Pico SDK **2.1.1**, TinyUSB from
 `https://github.com/wbcbz7/tinyusb` branch `rp2040-epx-only` at **a88dc2429**
 (2025-11-13; the RP2040 host-mode fixes plus `midi_host.h`), and tusb_xinput at
 **cfd83ba** (the `bool open()` signature that TinyUSB revision has).
+
+A 1.x moving from the November 2025 firmware to this source should have its
+`PICOMEM.CFG` deleted and the settings entered again: the old file is not read
+correctly, and the NE2000 is the visible casualty (no card at its port).

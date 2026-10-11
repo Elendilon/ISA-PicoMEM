@@ -144,6 +144,7 @@ SeeAlso: #P0004,#P0486
 //#if USE_AUDIO
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "hardware/structs/systick.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
 #include "pm_defines.h"
@@ -300,24 +301,48 @@ if (BV_DMANoUpdate==0) // if=0, update the DMA regs values
  }
 }
 //#endif
-// os8088-pm114: the DMA-port write log (pm_defines.h, DMADBG_). Called from
-// the bus loop with the data read the stock way (EARLY) while IOCHRDY holds
-// the PC; reads the pins again DMADBG_WAIT cycles later (LATE), logs both and
-// hands dev_dma_iow the one DMADBG_MODE names. Out of the loop so the loop
-// still fits SCRATCH_X, and in RAM so its timing is the RAM's
-void __not_in_flash_func(dev_dma_iow_dbg)(uint32_t CTRL_AL8, uint8_t Data)
+// os8088-pm114: the DMA-port write log, version 2 (pm_defines.h, DMADBG_).
+// Called from the bus loop with the data read the stock way (EARLY) and the
+// raw address word; samples GPIO 8-22 DMADBG_NS times back to back, logs the
+// lot and hands dev_dma_iow the byte DMADBG_MODE names. SysTick (core 1's own,
+// unused elsewhere) times the sampling. Out of the loop so the loop still fits
+// SCRATCH_X, and in RAM so its timing is the RAM's
+void __not_in_flash_func(dev_dma_iow_dbg)(uint32_t CTRL_AL8, uint8_t Data, uint32_t Raw)
 {
-  uint8_t late;
+  uint32_t smp[DMADBG_NS];
+  uint32_t t0, t1;
   uint16_t n;
-  busy_wait_at_least_cycles(DMADBG_WAIT);
-  late = (uint8_t) ((gpio_get_all() >> DMADBG_PIN_AD0) & 0xFF);
+  uint8_t *e;
+  uint8_t mode;
+  systick_hw->rvr = 0x00FFFFFF;
+  systick_hw->csr = 5;                  // enabled, processor clock, no IRQ
+  t0 = systick_hw->cvr;
+  for (int k = 0; k < DMADBG_NS; k++) {
+    smp[k] = gpio_get_all();
+    busy_wait_at_least_cycles(DMADBG_STEP);
+  }
+  t1 = systick_hw->cvr;
   n = PM_DP_RAM[DMADBG_IDX] | (PM_DP_RAM[DMADBG_IDX + 1] << 8);
-  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 0] = (uint8_t) CTRL_AL8;
-  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 1] = Data;
-  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 2] = late;
-  PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * 4 + 3] = (uint8_t) n;
+  e = (uint8_t *) &PM_DP_RAM[DMADBG_LOG + (n % DMADBG_N) * DMADBG_ESZ];
+  e[0] = (uint8_t) CTRL_AL8;
+  e[1] = Data;
+  e[2] = (uint8_t) n;
+  e[3] = (uint8_t) (CTRL_AL8 >> 8);
+  e[4] = (uint8_t) Raw;
+  e[5] = (uint8_t) (Raw >> 8);
+  e[6] = (uint8_t) (Raw >> 16);
+  e[7] = (uint8_t) (Raw >> 24);
+  for (int k = 0; k < DMADBG_NS; k++) {
+    e[8 + 2 * k] = (uint8_t) (smp[k] >> DMADBG_PIN_AD0);
+    e[9 + 2 * k] = (uint8_t) ((smp[k] >> 16) & 0x7F);
+  }
+  t0 = (t0 - t1) & 0x00FFFFFF;
+  PM_DP_RAM[DMADBG_TICKS] = (uint8_t) t0;
+  PM_DP_RAM[DMADBG_TICKS + 1] = (uint8_t) (t0 >> 8);
   n++;
   PM_DP_RAM[DMADBG_IDX] = (uint8_t) n;
   PM_DP_RAM[DMADBG_IDX + 1] = (uint8_t) (n >> 8);
-  dev_dma_iow(CTRL_AL8, PM_DP_RAM[DMADBG_MODE] ? late : Data);
+  mode = PM_DP_RAM[DMADBG_MODE];
+  if (mode > DMADBG_NS) mode = 0;
+  dev_dma_iow(CTRL_AL8, mode ? e[8 + 2 * (mode - 1)] : Data);
 }
