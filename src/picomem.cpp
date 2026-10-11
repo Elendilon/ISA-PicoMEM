@@ -410,7 +410,11 @@ vreg_set_voltage(CPU_VOLTAGE);
 busy_wait_ms(10);
 set_sys_clock_khz(PM_SYS_CLK*1000, true);
 #else
+#if PICO_RP2040
+vreg_set_voltage(VREG_VOLTAGE_1_20);   // RP2040 at 280MHz: 1.20V, as through the 2025 firmwares
+#else                                  // (the table above is the RP2350's)
 vreg_set_voltage(VREG_VOLTAGE_1_15);
+#endif
 set_sys_clock_khz(PM_SYS_CLK*1000, true);
 #endif
 

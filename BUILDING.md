@@ -166,3 +166,17 @@ Everything enabled leaves roughly 79 KB of RAM free.
 
 See `src/ne2000/README_FTP.md` for what makes up the 65 KB and which knobs to
 turn should a future feature need that headroom back.
+
+## PicoMEM 1.x (RP2040, `PICOMEM_BOARD "PICOMEM"`, `pico_w`)
+
+The PicoMEM 2 source dropped two settings a 1.x needs, and a build without
+them never lights the LED and hangs the PC after the option ROM banner:
+`CYW43_PIO_CLOCK_DIV_INT=4` (it was in the `pico_w` block; it is back in the
+"< 1.5" block) and 1.20V at 280MHz on an RP2040 (`BOARD_Init` set the
+RP2350's 1.15V). Both are restored on branch `os8088-pm114`.
+
+Build a 1.x the way the 2025 firmwares were built, not with the 0.21.0
+TinyUSB recommended above: Pico SDK **2.1.1**, TinyUSB from
+`https://github.com/wbcbz7/tinyusb` branch `rp2040-epx-only` at **a88dc2429**
+(2025-11-13; the RP2040 host-mode fixes plus `midi_host.h`), and tusb_xinput at
+**cfd83ba** (the `bool open()` signature that TinyUSB revision has).
