@@ -41,27 +41,41 @@ uint32_t PCC_API_STATUS;      // What the API is waiting for ? (To track crash)
 uint32_t PCC_CMD_IP;          // Command In Progress
 
 // Send a command to the PC, need to check that the PC is ready to receive a command first
+// os8088-pm114: while the card serves an int 13h, these waits spin on the
+// PC - which may be in one of its own interrupts for milliseconds - and
+// the speaker's 5 ms queue ran dry inside them (AH04: 236 of 246 silent
+// buffers were int 13h outside the SD reads and the pumped sector wait).
+// pm_cmd.cpp points this at the disk loop's audio pump for the length of
+// the call; it is only ever run on core 0, where the mixer lives.
+void (*volatile pm_pccmd_wait_hook)(void);
+static inline void pccmd_spin(void)
+{
+  if (pm_pccmd_wait_hook && get_core_num() == 0) pm_pccmd_wait_hook();
+}
+
 void Send_PC_CMD(uint8_t CommandNB)    // Send a Command, don't touch parameters and wait for its start
 {  
+   PM_SITE_IN(PMS_PCCMD);
 //  PM_INFO("Send_PC_CMD: Sending Command %d, Current State %d\n",CommandNB,PCCR_PCSTATE);
    if (PCCR_PCSTATE==PCC_PCS_CMDEND) // Acknowledge the end of the previous command
         {
           PCCR_PMSTATE=PCC_PMS_CMDACK;
           PCC_API_STATUS=PCC_API_WAITENDACK;
-          do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
+          do { pccmd_spin(); } while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
         }
    if (PCCR_PCSTATE!=PCC_PCS_WAITCMD) {
        // PM_INFO("Send_PC_CMD: PC not waiting for a command, current state %d\n",PCCR_PCSTATE);
         PCC_API_STATUS=PCC_API_WAITWAITCMD;
-        do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
+        do { pccmd_spin(); } while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
         }
-   if (PCCR_PCSTATE==PCC_PCS_RESET) return; // Can't send a command if the PC is in Reset State
+   if (PCCR_PCSTATE==PCC_PCS_RESET) { PM_SITE_OUT(); return; } // Can't send a command if the PC is in Reset State
 
    PCCR_CMD=CommandNB;             // Send the Command value
    PCCR_PMSTATE=PCC_PMS_CMDSENT;   // Inform the PC that a command is sent
    // Wait the Start of the command (PC no more in Wait CMD State)
    PCC_API_STATUS=PCC_API_WAITCMDSTART;
-   do {} while ((PCCR_PCSTATE==PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET)); 
+   do { pccmd_spin(); } while ((PCCR_PCSTATE==PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET)); 
+   PM_SITE_OUT();
 }
 
 // Wait for the PC BIOS to be ready to receive a command
@@ -71,7 +85,7 @@ bool PC_Wait_CMD_End()
   //PM_INFO("PC_Wait_CMD_End: Waiting for the end of the command, current state %d\n",PCCR_PCSTATE);
   if (PCCR_PCSTATE!=PCC_PCS_WAITCMD) 
    {
-    do {} while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET));
+    do { pccmd_spin(); } while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET));
     if (PCCR_PCSTATE==PCC_PCS_RESET)  { PCC_API_STATUS=PCC_API_END; return false; } // Reset Status, no more command can be sent
    }
   return true;
@@ -90,6 +104,7 @@ bool PC_Wait_CMD_End_Timeout(uint32_t delay)
   initial_time=time_us_64();
   PM_SITE_IN(PMS_PCCMD);                // os8088-pm114 (pm_site.h)
   do {
+      pccmd_spin();
       if ((time_us_64()-initial_time)>delay) { PM_SITE_OUT(); PCC_API_STATUS=PCC_API_END; return false; }
      } while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET));
   PM_SITE_OUT();
@@ -114,6 +129,7 @@ bool PC_Wait_End_Timeout(uint32_t delay)
          PCC_API_STATUS=PCC_API_WAITCMDEND;
          initial_time=time_us_64();
          do {
+             pccmd_spin();
              if ((time_us_64()-initial_time)>delay) return false;
             } while (PCCR_PCSTATE==PCC_PCS_INPROGRESS); // Wait for the end of the "End" Command
          if (PCCR_PCSTATE==PCC_PCS_NOTREADY) return true;

@@ -67,6 +67,9 @@ static inline void pm_audio_pump(void)
   pm_audio_domix();
 }
 
+// ...and for pm_pccmd's waits, for the length of an int 13h (pm_cmd.cpp)
+void pm_disk_audio_pump(void) { pm_audio_pump(); }
+
 // PC_Wait_CMD_End_Disk, pumping the audio while the PC copies the sector
 static bool pm_wait_disk_x(void);
 static bool pm_wait_disk(void)

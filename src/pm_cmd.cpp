@@ -1323,7 +1323,10 @@ void PM_ExecCMD()
         if (PM_Int13h_LEDCount++==3) pm_led(1);  // Don't blink the LED all the time
         uint64_t ah_t0 = time_us_64();          // os8088-pm114: the audio health
         PM_SITE_IN(PMS_I13);
+        extern void pm_disk_audio_pump(void);
+        if (!PM_DP_RAM[AH_STOCK]) pm_pccmd_wait_hook = pm_disk_audio_pump;
         INT13_DiskHandler();        
+        pm_pccmd_wait_hook = 0;
         PM_SITE_OUT();
         uint32_t ah_dt = (uint32_t) (time_us_64() - ah_t0);
         ah_inc(AH_I13N); ah_max(AH_I13MAX, ah_dt); ah_add(AH_I13SUM, ah_dt);
