@@ -891,7 +891,12 @@ void sbdsp_dma_worker()
     static uint64_t ah_last;
     static uint32_t ah_acked;
     uint64_t now = time_us_64();
-    if (PM_DP_RAM[AH_RESET]) ah_clear();
+    static uint32_t ah_silbase;
+    if (PM_DP_RAM[AH_RESET]) {
+      ah_clear(); ah_silbase = pm_audio_starved; pm_audio_starvemax = 0; }
+    ah_put(AH_SILENT, pm_audio_starved - ah_silbase);
+    ah_put(AH_SILMAX, pm_audio_starvemax);
+    ah_put(AH_QBUF, pm_audio_nbuf);
     // The cushion: the FIFO is filled just in time off the sample timer, so
     // the only sound held in hand is what it waits for before it starts.
     sbdsp_fifo.start_thr = PM_DP_RAM[AH_STOCK] ? AUDIO_FIFO_START_THRESHOLD

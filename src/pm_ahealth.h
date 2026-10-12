@@ -10,7 +10,7 @@
 extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars.h
 
 #define AH_OFFS     0x1F80          // past the DMA write log (ends 1F80h)
-#define AH_SIG      (AH_OFFS+0)     // 'AH02' ('AH01' had no AH_STOCK)
+#define AH_SIG      (AH_OFFS+0)     // 'AH03' (01: no AH_STOCK, 02: no AH_SILENT)
 #define AH_RESET    (AH_OFFS+4)     // byte: the PC writes 1, core 0 clears all
 #define AH_STOCK    (AH_OFFS+5)     // byte: nonzero = the card's STOCK sound
                                     // path (128-byte copies, a 512-sample
@@ -30,7 +30,16 @@ extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars
 #define AH_WORKN    (AH_OFFS+40)    // SB worker passes with a stream running
 #define AH_LVL      (AH_OFFS+44)    // the FIFO's level when last mixed
 #define AH_I13SUM   (AH_OFFS+48)    // int 13h time in all, us
-#define AH_END      (AH_OFFS+52)
+#define AH_SILENT   (AH_OFFS+52)    // output buffers (64 samples, 1.29 ms)
+                                    // the speaker got SILENCE for: the
+                                    // mixer had none ready
+#define AH_SILMAX   (AH_OFFS+56)    // the longest run of them
+#define AH_QBUF     (AH_OFFS+60)    // the output pool's buffers (48 wanted;
+                                    // 24, 12 or 5 when the heap was short)
+#define AH_END      (AH_OFFS+64)
+#if AH_STOCK != 0x1F85
+#error "pm_audio.h reads AH_STOCK as 0x1F85"
+#endif
 
 static inline uint32_t ah_get(uint32_t o)
 {
@@ -55,7 +64,7 @@ static inline void ah_clear(void)
 static inline void ah_init(void)
 {
   PM_DP_RAM[AH_SIG] = 'A'; PM_DP_RAM[AH_SIG+1] = 'H';
-  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '2';
+  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '3';
   for (uint32_t o = AH_STOCK; o < AH_UNDER; o++) PM_DP_RAM[o] = 0;
   ah_clear();
 }

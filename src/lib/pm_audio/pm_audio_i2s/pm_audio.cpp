@@ -27,6 +27,10 @@ If not, see <https://www.gnu.org/licenses/>.
 
 
 volatile pm_audio_t pm_audio;
+volatile uint32_t pm_audio_starved;    // os8088-pm114 (pm_audio.h)
+volatile uint32_t pm_audio_starverun;
+volatile uint32_t pm_audio_starvemax;
+volatile uint32_t pm_audio_nbuf;
 bool pm_i2s_active=false;
 bool pm_pool_initialized=false;
 
@@ -47,7 +51,13 @@ bool pm_audio_initpool()
     PM_INFO("Audio Init : Allocated buffer : %x\n",pm_audio.bufferpool);
 
     //Allocate all the buffers plus one (Empty buffer)
-    pm_audio.bufferpool=(uint8_t *)malloc(PM_AUDIO_POOLSIZE+PM_AUDIO_BUFFERSIZE);
+    // os8088-pm114: the deepest pool the heap has (pm_audio.h)
+    static const uint8_t nb[] = { PM_AUDIO_BUFFERS, 24, 12, PM_AUDIO_STOCK_BUFFERS };
+    pm_audio.bufferpool=NULL;
+    for (uint32_t i=0; i<sizeof(nb) && pm_audio.bufferpool==NULL; i++) {
+      pm_audio_nbuf=nb[i];
+      pm_audio.bufferpool=(uint8_t *)malloc((pm_audio_nbuf+1)*PM_AUDIO_BUFFERSIZE);
+    }
     if (pm_audio.bufferpool==NULL)
     { 
      PM_ERROR("Can't allocate Audio buffer\n");
@@ -57,11 +67,11 @@ bool pm_audio_initpool()
 
     pm_audio.playing_buffer=pm_audio.bufferpool;
     pm_audio.mixing_buffer=pm_audio.bufferpool;  
-	  pm_audio.poolend=pm_audio.bufferpool+PM_AUDIO_POOLSIZE;
+	  pm_audio.poolend=pm_audio.bufferpool+pm_audio_nbuf*PM_AUDIO_BUFFERSIZE;
     pm_audio.mixed_buffers=0;
     
     // Clean all the buffer, including the "Empty" buffer (pm_audio.poolend)
-    memset(pm_audio.bufferpool,0,PM_AUDIO_POOLSIZE+PM_AUDIO_BUFFERSIZE);
+    memset(pm_audio.bufferpool,0,(pm_audio_nbuf+1)*PM_AUDIO_BUFFERSIZE);
     pm_pool_initialized=true;
     return true;
 }
