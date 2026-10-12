@@ -245,6 +245,20 @@ Bit8u imageDisk::Read_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * da
 	return Read_AbsoluteSector(sectnum, data);
 }
 
+// Read count sectors in one f_read : FatFs then reads the clusters with SD multi block commands
+Bit8u imageDisk::Read_AbsoluteSectors(Bit32u sectnum, Bit32u count, void * data) {
+	uint byteread;
+	FRESULT fr;
+	f_lseek(diskimg,sectnum * sector_size);
+	fr = f_read(diskimg,data,count * sector_size,&byteread);
+	if ((FR_OK != fr) || (byteread != count * sector_size))
+	{
+	  PM_ERROR("Fail: %d \n",fr);
+	  return 0x04;  //04h : sector not found/read error (BIOS error code)
+	}
+	return 0x00;
+}
+
 Bit8u imageDisk::Read_AbsoluteSector(Bit32u sectnum, void * data) {
 	Bit32u 	bytenum = sectnum * sector_size;
     uint byteread;
@@ -434,6 +448,57 @@ static bool driveInactive(Bitu driveNum) {
 }
 
 
+// ** Multi sector disk read, to the PC RAM
+// The sectors are read DISK_RUN at a time in a Pico buffer, while the PC copies
+// the previous ones from the BIOS RAM transfer buffer (2Kb at 4Kb).
+// A run is one SD command instead of one per sector, and one PC copy command.
+#define DISK_RUN 4
+static uint8_t disk_run_buf[DISK_RUN*512];
+
+// True if the whole buffer is in the PC RAM (Not emulated by the PicoMEM)
+static bool disk_in_pc_ram(uint32_t start, uint32_t len)
+{
+  for (uint32_t a=start;a<start+len;a=(a|0xFFF)+1)
+    if (GetMEMType(a)!=MEM_NULL) return false;
+  return (GetMEMType(start+len-1)==MEM_NULL);
+}
+
+// Return 0 if Ok, the BIOS error code, or 0xFFFF if the PC did not answer (Nothing to return)
+static uint16_t disk_read_runs(Bitu drivenum, uint32_t lba, uint32_t count, uint32_t dest)
+{
+  uint32_t n=(count<DISK_RUN) ? count : DISK_RUN;
+  uint8_t st=imageDiskList[drivenum]->Read_AbsoluteSectors(lba,n,disk_run_buf);
+  if ((st!=0) || killRead) { killRead=false; return st ? st : 0x04; }
+
+  for (;;)
+   {
+    // The transfer buffer is free when the previous copy is completed
+    if (!PC_Wait_CMD_End_Disk()) return 0xFFFF;
+    memcpy((void *)PM_PTR_DISKBUFFER,disk_run_buf,n*512);
+    __compiler_memory_barrier();
+    if (!PC_MemCopyW_Disk(PC_DB_Start,dest,n*256)) return 0xFFFF;
+    if (PCCR_PCSTATE==PCC_PCS_RESET) return 0xFFFF;		// Quit if Reset asked
+
+    pm_disk_audio_pump();   // Insert Audio Mix during the wait time
+
+    lba+=n; dest+=n*512; count-=n;
+    if (count==0) break;
+
+    // Read the next run while the PC copies this one
+    n=(count<DISK_RUN) ? count : DISK_RUN;
+    st=imageDiskList[drivenum]->Read_AbsoluteSectors(lba,n,disk_run_buf);
+    if ((st!=0) || killRead)
+      {
+       killRead=false;
+       if (!PC_Wait_CMD_End_Disk()) return 0xFFFF;
+       return st ? st : 0x04;
+      }
+   }
+
+  if (!PC_Wait_CMD_End_Disk()) return 0xFFFF; // Wait until the PC finish the last copy
+  return 0;
+}
+
 Bitu INT13_DiskHandler(void) {
     Bit32u sect_lba;
 	Bit16u segat, bufptr;
@@ -525,6 +590,22 @@ Only Last Status 0,1 and 7 are used */
 #endif
 
 #endif
+
+        if (disk_in_pc_ram(PCBuffer_Start,reg_al*512))
+         {
+          uint16_t st=disk_read_runs(drivenum,sect_lba,reg_al,PCBuffer_Start);
+          if (st==0xFFFF) return CBRET_NONE;
+          if (st!=0)
+            {
+             PM_ERROR("HDD Read Error");
+             reg_ah = st;
+             reg_SetCF();
+             return CBRET_NONE;
+            }
+          reg_ah = 0x00;
+          reg_ClearCF();
+          break;
+         }
 
         BOffset=0;
   	    PCBuffer_End=PCBuffer_Start+512-1; //Current 512b PC Buffer End (-1 as we need the end, not the @ just after the end)

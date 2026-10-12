@@ -407,6 +407,32 @@ bool PC_MemCopyW_512b(uint32_t Src, uint32_t Dest)
   return true;
 }
 
+// Copy Len Words from Src to Dest Address  (PC RAM @), for the disk code
+// Same timeout as PC_MemCopyW_512b, don't wait for completion
+bool PC_MemCopyW_Disk(uint32_t Src, uint32_t Dest, uint16_t Len)
+{
+  if (!PC_Wait_CMD_End_Disk()) return false;
+
+  // Source Offset
+  PM_DP_RAM[OFFS_PCCMDPARAM]=(uint8_t)Src&0xF;
+  PM_DP_RAM[OFFS_PCCMDPARAM+1]=0;
+  // Source Segment
+  PM_DP_RAM[OFFS_PCCMDPARAM+2]=(uint8_t)(Src>>4);
+  PM_DP_RAM[OFFS_PCCMDPARAM+3]=(uint8_t)(Src>>12);
+  // Destination Offset
+  PM_DP_RAM[OFFS_PCCMDPARAM+4]=(uint8_t)Dest&0xF;
+  PM_DP_RAM[OFFS_PCCMDPARAM+5]=0;
+  // Destination Segment
+  PM_DP_RAM[OFFS_PCCMDPARAM+6]=(uint8_t)(Dest>>4);
+  PM_DP_RAM[OFFS_PCCMDPARAM+7]=(uint8_t)(Dest>>12);
+  // Length
+  PM_DP_RAM[OFFS_PCCMDPARAM+8]=(uint8_t)Len;
+  PM_DP_RAM[OFFS_PCCMDPARAM+9]=(uint8_t)(Len>>8);
+  Send_PC_CMD(PCC_MemCopyW);
+  PCC_API_STATUS=PCC_API_END;
+  return true;
+}
+
 uint8_t PC_IN8(uint16_t port)
 {
   PC_Wait_CMD_End();  

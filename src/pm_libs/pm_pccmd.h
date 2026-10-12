@@ -92,6 +92,7 @@ extern void PC_OUT16(uint16_t port, uint16_t data);
 
 extern void PC_MemCopy(uint32_t Src, uint32_t Dest, uint16_t Size); // Copy xx Bytes from Src to Dest Address  (PC RAM @)
 extern bool PC_MemCopyW_512b(uint32_t Src, uint32_t Dest);          // Copy 512 Bytes from Src to Dest Address  (PC RAM @)
+extern bool PC_MemCopyW_Disk(uint32_t Src, uint32_t Dest, uint16_t Len); // Same, Len words
 
 __force_inline bool PC_Wait_CMD_End_Disk()
 {
