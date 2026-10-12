@@ -1,3 +1,5 @@
 .vscode
 build
 *.LST
+src/lib/tinyusb/
+src/lib/tusb_xinput/
