@@ -903,12 +903,14 @@ void sbdsp_dma_worker()
     if (PM_DP_RAM[AH_RESET] || !ah_get(AH_HEAP)) {
       ah_clear(); ah_silbase = pm_audio_starved; pm_audio_starvemax = 0;
       for (uint32_t i = 0; i < 16; i++) pm_starve_site[i] = 0;
+      pm_starve_last = 0; pm_starve_maxat = 0;
       ah_sdbase = pm_sd_mixes; ah_put(AH_HEAP, ah_heap_free()); }
     if (!(++ah_n & 63)) {
       ah_put(AH_SILENT, pm_audio_starved - ah_silbase);
       ah_put(AH_SILMAX, pm_audio_starvemax);
       ah_put(AH_SDMIX, pm_sd_mixes - ah_sdbase);
       for (uint32_t i = 0; i < AH_NSITE; i++) ah_put(AH_SITE + 4*i, pm_starve_site[i]);
+      ah_put(AH_SLAST, pm_starve_last); ah_put(AH_SMAXAT, pm_starve_maxat);
     }
     // The cushion: the FIFO is filled just in time off the sample timer, so
     // the only sound held in hand is what it waits for before it starts.
@@ -973,6 +975,8 @@ if (sbdsp.mainloop_action==DSP_MLC_SENDIRQ) {  // Perform the reset here, to not
 #endif
 }
 
+static bool ah_dry;    // os8088-pm114: inside a dry spell (AH_UNDER)
+
 // return an audio buffer by reading from the audio fifo
 void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
 {
@@ -1001,10 +1005,11 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
         if (sbdsp.readsample)
              if (!afifo_take_sample8(&sbdsp_fifo, &res8u)) 
               {
-                 if (sbdsp.vdma_to_send) ah_inc(AH_UNDER);  // os8088-pm114
+                 if (sbdsp.dma_enabled && !ah_dry) { ah_inc(AH_UNDER); ah_dry = true; }  // os8088-pm114
                  sbdsp.prev_sample8u=0x80;  // If the FIFO is empty, return silence
                 return;
               }
+        ah_dry = false;
         fres=(int16_t) ((res8u<<8)+0x8000)/4;  // Convert to 16Bit signed
         prev_increment=sbdsp.increment;
         sbdsp.increment+=sbdsp.sample_step;    // Adjust the DMA buffer to the Output frequency 

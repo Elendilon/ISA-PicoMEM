@@ -43,6 +43,9 @@ extern volatile uint32_t pm_audio_starved;   // os8088-pm114: silent buffers
 extern volatile uint32_t pm_audio_starverun; //  played, and the longest run
 extern volatile uint32_t pm_audio_starvemax; //  of them (pm_ahealth.h)
 extern volatile uint32_t pm_starve_site[16]; //  by what core 0 ran (pm_site.h)
+extern volatile uint32_t pm_starve_last;     //  site << 8 | PM_Command, the
+extern volatile uint32_t pm_starve_maxat;    //  last one and the longest run's
+extern volatile uint8_t PM_Command;
 
 extern bool pm_audio_init(uint32_t sample_freq);
 extern bool pm_audio_stop();
@@ -67,7 +70,9 @@ if ((pm_buffers_ready)!=0)
 //PM_INFO("!Z");
 pm_audio_starved++;
 pm_starve_site[pm_site & 15]++;
-if (++pm_audio_starverun>pm_audio_starvemax) pm_audio_starvemax=pm_audio_starverun;
+pm_starve_last=((uint32_t) pm_site<<8)|PM_Command;
+if (++pm_audio_starverun>pm_audio_starvemax) {
+  pm_audio_starvemax=pm_audio_starverun; pm_starve_maxat=pm_starve_last; }
 return pm_audio.poolend;  // poolend contains an empty buffer
 }
 
