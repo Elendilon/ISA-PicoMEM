@@ -213,6 +213,15 @@ static __force_inline void sbdsp_dac_disable() {
 }
 */
 
+#if !USE_HWDMA
+// End of a DMA block : The IRQ is sent by the main loop when the block is read from the PC
+// (Not before, the PC can then write in the block as soon as it has the IRQ)
+static __force_inline void sbdsp_vdma_block_end() {
+    sbdsp.vdma_irq_at[sbdsp.vdma_irq_wr & 7]=sbdsp.vdma_to_send;
+    sbdsp.vdma_irq_wr++;
+}
+#endif
+
 static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
     uint32_t current_interval;
     uint32_t total_ticks;
@@ -254,7 +263,7 @@ static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
 #if USE_HWDMA
             bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true);
 #else
-            sbdsp.mainloop_action=DSP_MLC_SENDIRQ;
+            sbdsp_vdma_block_end();
 #endif
             sbdsp.dma_sample_count_rx=0;
             sbdsp.adpcm_code_index=0;
@@ -266,7 +275,7 @@ static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
 #if USE_HWDMA
             bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true);
 #else
-            sbdsp.mainloop_action=DSP_MLC_SENDIRQ;
+            sbdsp_vdma_block_end();
 #endif
          return 0;
         }
@@ -343,6 +352,9 @@ void sbdsp_init()
 
 
     afifo_init8(&sbdsp_fifo); // initialize the audio FIFO
+#if !USE_HWDMA
+    sbdsp_fifo.start_thr=1024; // Emulated DMA : Bigger FIFO level to absorb the SD and PC access delays
+#endif
 
 #ifdef BOARD_PICOMEM
     PM_INFO("sbdsp_init\n");
@@ -1064,6 +1076,7 @@ void sbdsp_dma_worker()
       PM_INFO(">MLCRST ");
       sbdsp.vdma_to_send=0;   // Reset the Virtual DMA sample count
       sbdsp.vdma_sent=0;
+      sbdsp.vdma_irq_rd=sbdsp.vdma_irq_wr;  // No more IRQ to send
       isa_dma_buffer_free();  // Free the DMA buffer
       sbdsp.mainloop_action=DSP_MLC_NONE;
       return;
@@ -1073,6 +1086,11 @@ void sbdsp_dma_worker()
      afifo_reset8(&sbdsp_fifo); // Reset the FIFO
    }
 */
+
+  // A copy is a whole block, so when a transfer stops, the end of the last
+  // one is left in the buffer. Drop it once the PC has programmed the DMA
+  // again: it is not part of the new transfer.
+  if (isa_dma.buffer_level && dmachregs[sbdsp.dma8].changed) isa_dma_buffer_free();
 
   if (sbdsp.vdma_to_send!=sbdsp.vdma_sent) {  // Execute only if there is data to transfer
   DBG_ON_SB_UPD();
@@ -1084,11 +1102,16 @@ void sbdsp_dma_worker()
   DBG_OFF_SB_UPD();
  }
 
-if (sbdsp.mainloop_action==DSP_MLC_SENDIRQ) {  // Perform the reset here, to not change the variable in the middle of the worker execution
+  // DMA ended and all the samples sent : Start the playback even if the FIFO start level is not reached
+  if (!sbdsp.dma_enabled && (sbdsp.vdma_to_send==sbdsp.vdma_sent) && (sbdsp_fifo.state==FIFO_STATE_STOPPED)
+      && (sbdsp_fifo.samples_received!=sbdsp_fifo.samples_sent)) sbdsp_fifo.state=FIFO_STATE_RUNNING;
+
+  // Send the block IRQ when all the block bytes are read
+  if ((sbdsp.vdma_irq_rd!=sbdsp.vdma_irq_wr) && ((int32_t)(sbdsp.vdma_sent-sbdsp.vdma_irq_at[sbdsp.vdma_irq_rd & 7])>=0)) {
  //     PM_INFO(">I ");
       DBG_ON_IRQ_SB();
       bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true);
-      sbdsp.mainloop_action=DSP_MLC_NONE;
+      sbdsp.vdma_irq_rd++;
       return;
      }
 

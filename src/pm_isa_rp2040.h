@@ -41,7 +41,9 @@ uint32_t  ISA_Addr;
 uint8_t   ISA_Data;
 
 // Send the value to use to return the fake Address (Address where the is a ROM or no IO)
- pio_sm_put(isa_pio, isa_bus_sm, 0x0FFFFF0F0);  // If 0x0FFFFF0FF, Floppy access (DMA) Crash
+ // A10 must be set (0x0F4): the IO decode uses A3-A10, and with A10 clear a DMA cycle
+ // at xx00-xx0F or xx80-xx8F was decoded as a write to the 8237 registers
+ pio_sm_put(isa_pio, isa_bus_sm, 0x0FFFFF0F4);  // If 0x0FFFFF0FF, Floppy access (DMA) Crash
 
 for (;;) {
 

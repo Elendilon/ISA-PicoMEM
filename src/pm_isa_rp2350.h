@@ -22,6 +22,8 @@ uint8_t   ISA_Data;
 
 // Send the value to use to return the fake Address (Address where the is a ROM or no IO)
  pio_sm_put(isa_pio, isa_bus_sm, 0x0FFFFF0F0);  // If 0x0FFFFF0FF, Floppy access (DMA) Crash
+// Same A10 fix as pm_isa_rp2040.h (DMA cycles decoded as 8237 writes), not tested on this board :
+// pio_sm_put(isa_pio, isa_bus_sm, 0x0FFFFF0F4);
 
 //for (;;) {}
 

@@ -39,6 +39,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 uint32_t PCC_API_STATUS;      // What the API is waiting for ? (To track crash)
 uint32_t PCC_CMD_IP;          // Command In Progress
 
+// Called while waiting for the PC (Set during Int13h to keep the audio running), Core 0 only
+void (*volatile pm_pccmd_wait_hook)(void);
+
+static inline void pccmd_wait()
+{
+  if (pm_pccmd_wait_hook && (get_core_num()==0)) pm_pccmd_wait_hook();
+}
+
 // Send a command to the PC, need to check that the PC is ready to receive a command first
 void Send_PC_CMD(uint8_t CommandNB)    // Send a Command, don't touch parameters and wait for its start
 {  
@@ -47,12 +55,12 @@ void Send_PC_CMD(uint8_t CommandNB)    // Send a Command, don't touch parameters
         {
           PCCR_PMSTATE=PCC_PMS_CMDACK;
           PCC_API_STATUS=PCC_API_WAITENDACK;
-          do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
+          do { pccmd_wait(); } while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
         }
    if (PCCR_PCSTATE!=PCC_PCS_WAITCMD) {
        // PM_INFO("Send_PC_CMD: PC not waiting for a command, current state %d\n",PCCR_PCSTATE);
         PCC_API_STATUS=PCC_API_WAITWAITCMD;
-        do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
+        do { pccmd_wait(); } while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
         }
    if (PCCR_PCSTATE==PCC_PCS_RESET) return; // Can't send a command if the PC is in Reset State
 
@@ -60,7 +68,7 @@ void Send_PC_CMD(uint8_t CommandNB)    // Send a Command, don't touch parameters
    PCCR_PMSTATE=PCC_PMS_CMDSENT;   // Inform the PC that a command is sent
    // Wait the Start of the command (PC no more in Wait CMD State)
    PCC_API_STATUS=PCC_API_WAITCMDSTART;
-   do {} while ((PCCR_PCSTATE==PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET)); 
+   do { pccmd_wait(); } while ((PCCR_PCSTATE==PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET)); 
 }
 
 // Wait for the PC BIOS to be ready to receive a command
@@ -70,7 +78,7 @@ bool PC_Wait_CMD_End()
   //PM_INFO("PC_Wait_CMD_End: Waiting for the end of the command, current state %d\n",PCCR_PCSTATE);
   if (PCCR_PCSTATE!=PCC_PCS_WAITCMD) 
    {
-    do {} while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET));
+    do { pccmd_wait(); } while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET));
     if (PCCR_PCSTATE==PCC_PCS_RESET)  { PCC_API_STATUS=PCC_API_END; return false; } // Reset Status, no more command can be sent
    }
   return true;
@@ -88,6 +96,7 @@ bool PC_Wait_CMD_End_Timeout(uint32_t delay)
   PCC_API_STATUS=PCC_API_WAITCMDEND;
   initial_time=time_us_64();
   do {
+      pccmd_wait();
       if ((time_us_64()-initial_time)>delay) { PCC_API_STATUS=PCC_API_END; return false; }
      } while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET));
 
@@ -111,6 +120,7 @@ bool PC_Wait_End_Timeout(uint32_t delay)
          PCC_API_STATUS=PCC_API_WAITCMDEND;
          initial_time=time_us_64();
          do {
+             pccmd_wait();
              if ((time_us_64()-initial_time)>delay) return false;
             } while (PCCR_PCSTATE==PCC_PCS_INPROGRESS); // Wait for the end of the "End" Command
          if (PCCR_PCSTATE==PCC_PCS_NOTREADY) return true;
@@ -388,6 +398,32 @@ bool PC_MemCopyW_512b(uint32_t Src, uint32_t Dest)
   PM_DP_RAM[OFFS_PCCMDPARAM+6]=(uint8_t)(Dest>>4);
   PM_DP_RAM[OFFS_PCCMDPARAM+7]=(uint8_t)(Dest>>12);
   Send_PC_CMD(PCC_MemCopyW_512b);
+  PCC_API_STATUS=PCC_API_END;
+  return true;
+}
+
+// Copy Len Words from Src to Dest Address  (PC RAM @), for the disk code
+// Same timeout as PC_MemCopyW_512b, don't wait for completion
+bool PC_MemCopyW_Disk(uint32_t Src, uint32_t Dest, uint16_t Len)
+{
+  if (!PC_Wait_CMD_End_Disk()) return false;
+
+  // Source Offset
+  PM_DP_RAM[OFFS_PCCMDPARAM]=(uint8_t)Src&0xF;
+  PM_DP_RAM[OFFS_PCCMDPARAM+1]=0;
+  // Source Segment
+  PM_DP_RAM[OFFS_PCCMDPARAM+2]=(uint8_t)(Src>>4);
+  PM_DP_RAM[OFFS_PCCMDPARAM+3]=(uint8_t)(Src>>12);
+  // Destination Offset
+  PM_DP_RAM[OFFS_PCCMDPARAM+4]=(uint8_t)Dest&0xF;
+  PM_DP_RAM[OFFS_PCCMDPARAM+5]=0;
+  // Destination Segment
+  PM_DP_RAM[OFFS_PCCMDPARAM+6]=(uint8_t)(Dest>>4);
+  PM_DP_RAM[OFFS_PCCMDPARAM+7]=(uint8_t)(Dest>>12);
+  // Length
+  PM_DP_RAM[OFFS_PCCMDPARAM+8]=(uint8_t)Len;
+  PM_DP_RAM[OFFS_PCCMDPARAM+9]=(uint8_t)(Len>>8);
+  Send_PC_CMD(PCC_MemCopyW);
   PCC_API_STATUS=PCC_API_END;
   return true;
 }
