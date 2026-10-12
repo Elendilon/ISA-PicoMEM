@@ -10,7 +10,7 @@
 // Virtual DMA definitions
 #define PM_DMAB_Offset 6*1024
 #define PM_DMAB_Size   1024  // 2*1024 max
-#define DMA_BLOC_SIZE 128    // Size of the DMA transfer block (128 bytes)
+#define DMA_BLOC_SIZE 512    // Size of the DMA transfer block (Max transfer is 1.5x, must fit PM_DMAB_Size)
 
 // Real DMA definitions
 #define DMA_PIO pio0

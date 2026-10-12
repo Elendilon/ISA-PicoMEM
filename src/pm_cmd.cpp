@@ -513,6 +513,8 @@ bool PM_RTC_OnOff(uint8_t state)
 // *************************************************************
 // *****      PicoMEM Commands Run from the 2nd core       *****
 // *************************************************************
+extern void pm_disk_audio_pump();
+
 void PM_ExecCMD()
 {
 
@@ -1319,6 +1321,7 @@ void PM_ExecCMD()
      if (PM_EnableSD()) 
       {
         if (PM_Int13h_LEDCount++==3) pm_led(1);  // Don't blink the LED all the time
+        pm_pccmd_wait_hook=pm_disk_audio_pump;  // Keep the audio running while waiting for the PC
         INT13_DiskHandler();        
       }
        else
@@ -1330,6 +1333,7 @@ void PM_ExecCMD()
 
      PM_PICO_EnablePSRAM();   // Re enable the PSRAM for the Memory emulation
 	   PC_End();                // Tell the PC Command loop to end
+     pm_pccmd_wait_hook=NULL;
   
      if (PM_Int13h_LEDCount==6) {
         pm_led(0);

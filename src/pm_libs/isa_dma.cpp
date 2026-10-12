@@ -148,7 +148,7 @@ if (DMA_IRQ_Sent!=DMA_IRQ_Acked) { // If the previous DMA Copy command was not a
 }
 
 // Perform a DMA Transfer (Emulated DMA Code)
-// Transfer a 128 byte block from the PC to the PicoMEM RAM using a Single buffer (No FIFO)
+// Transfer a DMA_BLOC_SIZE block from the PC to the PicoMEM RAM using a Single buffer (No FIFO)
 void isa_dma_transfer(uint8_t channel)
 {
  // PM_INFO("!BL%d ",isa_dma.buffer_level);
