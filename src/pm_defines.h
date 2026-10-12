@@ -227,6 +227,11 @@ If not, see <https://www.gnu.org/licenses/>.
 #define DMADBG_MODE   (DMADBG_OFFS+8)    // 0 = the early read (stock), k = sample k-1
 #define DMADBG_PUMPOFF (DMADBG_OFFS+9)   // nonzero: the disk loop does NOT pump the
                                          // Sound Blaster (bios_disk.cpp; the A/B)
+#if OS88_DIAG
+#define OS88_PUMPOFF() (PM_DP_RAM[DMADBG_PUMPOFF] != 0)
+#else
+#define OS88_PUMPOFF() 0                 // the switch is a field diagnostic
+#endif
 #define DMADBG_IDX    (DMADBG_OFFS+10)   // word: writes logged, ever (wraps)
 #define DMADBG_TICKS  (DMADBG_OFFS+12)   // word: cycles the last sampling took
 #define DMADBG_NSB    (DMADBG_OFFS+14)   // byte: DMADBG_NS

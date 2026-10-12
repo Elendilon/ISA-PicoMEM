@@ -190,6 +190,7 @@
 
 #include "../../../../pm_debug.h"
 #include "../../../../pm_site.h"
+#include "../../../../pm_ahealth.h"
 void pm_audio_domix();
 
 // os8088-pm114: the card's speaker queue is 5 ms (pm_audio.h) and the mixer
@@ -197,10 +198,14 @@ void pm_audio_domix();
 // or to come ready played silence for all of it - a video streamed from the
 // card's disk dropped sound several times a second. Its waits mix as they
 // go, unless the byte at BIOS:5F85 (AH_STOCK, pm_ahealth.h) asks for stock.
-extern volatile uint8_t PM_DP_RAM[];
 volatile uint32_t pm_sd_mixes;
 static inline void sd_wait_mix(void) {
-    if (!PM_DP_RAM[0x1F85]) { pm_sd_mixes++; pm_audio_domix(); }
+    if (!OS88_STOCK()) {
+#if OS88_DIAG
+        pm_sd_mixes++;
+#endif
+        pm_audio_domix();
+    }
 }
 
 #if defined(NDEBUG) || !USE_DBG_PRINTF

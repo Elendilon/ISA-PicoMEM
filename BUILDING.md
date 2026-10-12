@@ -184,3 +184,34 @@ TinyUSB recommended above: Pico SDK **2.1.1**, TinyUSB from
 A 1.x moving from the November 2025 firmware to this source should have its
 `PICOMEM.CFG` deleted and the settings entered again: the old file is not read
 correctly, and the NE2000 is the visible casualty (no card at its port).
+
+### What `os8088-pm114` changes on a 1.x, and the diagnostics knob
+
+The fixes, all on in every build (os8088 `docs/FIELD-NOTES.md` 66 is the
+field record behind each):
+
+- **A DMA cycle no longer decodes as an 8237 write** (`pm_isa_rp2040.h`): the
+  stand-in address for a cycle taken with AEN high had A10 clear, so a
+  transfer over xx00-xx0F or xx80-xx8F was taken as CPU writes to the 8237
+  and the Sound Blaster copied from the wrong place. It is `0x0F4` now.
+- **The Sound Blaster is fed through a disk call**: an int 13h held the
+  main loop for its whole length, so the SB worker is pumped in the disk
+  loop (`bios_disk.cpp`), in the wait for the PC's sector copy, and - for the
+  length of the int 13h, `PC_End`'s handshake included - in every
+  PC-command wait (`pm_pccmd.cpp`'s `pm_pccmd_wait_hook`, core 0 only).
+- **The mixer runs inside the SD driver's waits** (`sd_card_spi.c`): the
+  speaker's queue is 5 ms and a card slow to answer is not.
+- **512-byte DMA copies and a 1,024-sample FIFO start** for the SB
+  (`isa_dma.cpp`, `audio_fifo.h`, `sbdsp.cpp`), and a sound shorter than the
+  start level plays once its DMA has stopped.
+
+`OS88_DIAG` (CMake cache variable, default 0) builds in what measured them:
+the DMA-port write log at BIOS+5C00h, the Sound Blaster's audio health
+record at BIOS+5F80h ('AH05'), the silence-by-site counters, and the two
+PC-side switches os8088's `tests/pmdma` flips - BIOS+5C09h (no disk-loop
+pump) and BIOS+5F85h (the stock 128-byte copies, 512-sample start and no
+waits pumped). With it off none of that RAM is read or written and the
+fixes cannot be switched off. `tools/build-linux.sh` passes `CMAKE_EXTRA`
+through to the configure step:
+
+    CMAKE_EXTRA=-DOS88_DIAG=1 tools/build-linux.sh

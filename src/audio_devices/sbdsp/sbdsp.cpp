@@ -25,6 +25,7 @@ uint32_t PM_DMA_SendTime;
 #include "pm_audio.h"
 #include "../../pm_libs/isa_dma.h"       // ISA/PC DMA code
 #include "../../pm_ahealth.h"             // os8088-pm114: the audio health record
+#if OS88_DIAG
 #include <unistd.h>
 extern "C" volatile uint32_t pm_sd_mixes;    // sd_card_spi.c
 extern char __HeapLimit;
@@ -35,6 +36,7 @@ static uint32_t ah_heap_free(void)         // never 0, so it marks "taken"
 extern uint32_t DMA_IRQ_Acked;
 extern uint64_t DMA_IRQ_AckTime;
 extern uint64_t ah_copy_req;               // isa_dma.cpp: when the last copy was asked
+#endif
 #include "../../pm_libs/bus_irq.h"       // ISA/PC IRQ code
 #include "dev_sbdsp.h"
 #include "audio_fifo.h"
@@ -894,6 +896,12 @@ void sbdsp_dma_worker()
 
 #else
 
+  // os8088-pm114: the cushion. The FIFO is filled just in time off the
+  // sample timer, so the only sound held in hand is what it waits for
+  // before it starts: 1,024 samples, where stock waits for 512.
+  sbdsp_fifo.start_thr = OS88_STOCK() ? AUDIO_FIFO_START_THRESHOLD
+                                      : SBDSP_FIFO_START_BIG;
+#if OS88_DIAG
   { // os8088-pm114: the audio health record (pm_ahealth.h)
     static uint64_t ah_last;
     static uint32_t ah_acked;
@@ -912,10 +920,6 @@ void sbdsp_dma_worker()
       for (uint32_t i = 0; i < AH_NSITE; i++) ah_put(AH_SITE + 4*i, pm_starve_site[i]);
       ah_put(AH_SLAST, pm_starve_last); ah_put(AH_SMAXAT, pm_starve_maxat);
     }
-    // The cushion: the FIFO is filled just in time off the sample timer, so
-    // the only sound held in hand is what it waits for before it starts.
-    sbdsp_fifo.start_thr = PM_DP_RAM[AH_STOCK] ? AUDIO_FIFO_START_THRESHOLD
-                                               : SBDSP_FIFO_START_BIG;
     if (sbdsp.vdma_to_send) {
       ah_inc(AH_WORKN);
       if (ah_last) ah_max(AH_MAXGAP, (uint32_t) (now - ah_last));
@@ -926,6 +930,7 @@ void sbdsp_dma_worker()
     ah_acked = DMA_IRQ_Acked;
     ah_last = sbdsp.vdma_to_send ? now : 0;
   }
+#endif
 
 #if DBG_PIN_AUDIO   
   if (SVAR_IRQ->PM_IRR) DBG_ON_INT_SB();

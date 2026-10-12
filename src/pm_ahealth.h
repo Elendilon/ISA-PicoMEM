@@ -5,6 +5,9 @@
 // these say which of the card's own stages runs dry. Byte stores only:
 // PM_DP_RAM has no alignment promise. Every writer is on core 0.
 #pragma once
+#ifndef OS88_DIAG
+#define OS88_DIAG 0
+#endif
 #include <stdint.h>
 #include "pico/time.h"
 extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars.h
@@ -56,6 +59,8 @@ extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars
 #error "pm_audio.h reads AH_STOCK as 0x1F85"
 #endif
 
+#if OS88_DIAG
+#define OS88_STOCK() (PM_DP_RAM[AH_STOCK] != 0)   // the A/B: stock sound path
 static inline uint32_t ah_get(uint32_t o)
 {
   return PM_DP_RAM[o] | ((uint32_t) PM_DP_RAM[o+1] << 8) |
@@ -83,3 +88,14 @@ static inline void ah_init(void)
   for (uint32_t o = AH_STOCK; o < AH_UNDER; o++) PM_DP_RAM[o] = 0;
   ah_clear();
 }
+#else  // the record and the switch are field diagnostics (CMakeLists.txt)
+#define OS88_STOCK() 0
+static inline uint32_t ah_get(uint32_t o) { (void) o; return 0; }
+static inline void ah_put(uint32_t o, uint32_t v) { (void) o; (void) v; }
+static inline void ah_inc(uint32_t o) { (void) o; }
+static inline void ah_add(uint32_t o, uint32_t v) { (void) o; (void) v; }
+static inline void ah_max(uint32_t o, uint32_t v) { (void) o; (void) v; }
+static inline void ah_min(uint32_t o, uint32_t v) { (void) o; (void) v; }
+static inline void ah_clear(void) {}
+static inline void ah_init(void) {}
+#endif

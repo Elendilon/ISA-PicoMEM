@@ -301,6 +301,7 @@ if (BV_DMANoUpdate==0) // if=0, update the DMA regs values
  }
 }
 //#endif
+#if OS88_DIAG
 // os8088-pm114: the DMA-port write log, version 2 (pm_defines.h, DMADBG_).
 // Called from the bus loop with the data read the stock way (EARLY) and the
 // raw address word; samples GPIO 8-22 DMADBG_NS times back to back, logs the
@@ -346,3 +347,4 @@ void __not_in_flash_func(dev_dma_iow_dbg)(uint32_t CTRL_AL8, uint8_t Data, uint3
   if (mode > DMADBG_NS) mode = 0;
   dev_dma_iow(CTRL_AL8, mode ? e[8 + 2 * (mode - 1)] : Data);
 }
+#endif // OS88_DIAG

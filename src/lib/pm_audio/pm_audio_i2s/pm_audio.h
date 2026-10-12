@@ -64,15 +64,19 @@ if ((pm_buffers_ready)!=0)
     pm_audio.played_buffers++;
     pm_audio.playing_buffer=pm_audio.playing_buffer+PM_AUDIO_BUFFERSIZE;
     if (pm_audio.playing_buffer>=pm_audio.poolend) pm_audio.playing_buffer=pm_audio.bufferpool;
+#if OS88_DIAG
     pm_audio_starverun=0;
+#endif
     return pm_audio.playing_buffer;
    }
 //PM_INFO("!Z");
+#if OS88_DIAG  // os8088-pm114: the speaker fed silence (pm_ahealth.h)
 pm_audio_starved++;
 pm_starve_site[pm_site & 15]++;
 pm_starve_last=((uint32_t) pm_site<<8)|PM_Command;
 if (++pm_audio_starverun>pm_audio_starvemax) {
   pm_audio_starvemax=pm_audio_starverun; pm_starve_maxat=pm_starve_last; }
+#endif
 return pm_audio.poolend;  // poolend contains an empty buffer
 }
 

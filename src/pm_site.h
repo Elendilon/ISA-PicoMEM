@@ -28,5 +28,15 @@ enum {
   PMS_NET,        // ne2000_initiate_send
   PMS_N = 12
 };
+#ifndef OS88_DIAG
+#define OS88_DIAG 0
+#endif
+#if OS88_DIAG
+#define PM_SITE_SET(x) (pm_site = (x))
 #define PM_SITE_IN(x)  uint8_t pm_site_sv = pm_site; pm_site = (x)
 #define PM_SITE_OUT()  (pm_site = pm_site_sv)
+#else                  // a field diagnostic (CMakeLists.txt OS88_DIAG)
+#define PM_SITE_SET(x) ((void) 0)
+#define PM_SITE_IN(x)  ((void) 0)
+#define PM_SITE_OUT()  ((void) 0)
+#endif

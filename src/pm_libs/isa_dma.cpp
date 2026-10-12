@@ -26,7 +26,9 @@ uint32_t DMA_IRQ_Sent;   // To count the NB of DMA IRQ sent and acknowledge (For
 uint32_t DMA_IRQ_Acked;
 
 uint64_t DMA_IRQ_AckTime;
+#if OS88_DIAG
 uint64_t ah_copy_req;     // os8088-pm114: when the last copy was asked (pm_ahealth.h)
+#endif
 uint64_t DMA_Start_Time;
 
 #define DMA_IRQ_START_WAIT 500 // Need 500us between the Ack and next Request
@@ -144,7 +146,9 @@ if (DMA_IRQ_Sent!=DMA_IRQ_Acked) { // If the previous DMA Copy command was not a
    // DMA Channel
    PM_DP_RAM[OFFS_IRQ_PARAM+14]=channel;
 
+#if OS88_DIAG
    ah_copy_req=time_us_64();                     // os8088-pm114
+#endif
    isa_pm_irq_raise(IRQ_R_DMACOPY,1,force_irq);  // Send a DMA Copy interrupt request
    DMA_IRQ_Sent++;
    ah_inc(AH_COPIES);
@@ -215,7 +219,7 @@ void isa_dma_transfer(uint8_t channel)
   // 128 bytes that trip is ~11 ms of 11 kHz sound - so while the PC is busy
   // in the card's own int 13h the supply barely matches the play rate and
   // the FIFO never holds its cushion. 512 brings four times as much a trip.
-  uint32_t bloc = PM_DP_RAM[AH_STOCK] ? DMA_BLOC_SIZE : DMA_BLOC_BIG;
+  uint32_t bloc = OS88_STOCK() ? DMA_BLOC_SIZE : DMA_BLOC_BIG;
   isa_dma.to_transfer = (isa_dma.dma_remain<(bloc+bloc/2)) ? isa_dma.dma_remain : bloc;
 
   uint32_t DMA_Buffer_Addr=((uint32_t) PM_BIOSADDRESS<<4)+16*1024+PM_DMAB_Offset;    // "Dual Port RAM" is at BIOS Address + 16Kb

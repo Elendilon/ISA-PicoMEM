@@ -62,7 +62,7 @@ extern pio_spi_inst_t psram_spi;
 static inline void pm_audio_pump(void)
 {
 #if USE_SBDSP
-  if (!PM_DP_RAM[DMADBG_PUMPOFF]) dev_sbdsp_update();
+  if (!OS88_PUMPOFF()) dev_sbdsp_update();
 #endif
   pm_audio_domix();
 }
@@ -78,7 +78,7 @@ static bool pm_wait_disk(void)
 }
 static bool pm_wait_disk_x(void)
 {
-  if (PM_DP_RAM[DMADBG_PUMPOFF]) return PC_Wait_CMD_End_Disk();
+  if (OS88_PUMPOFF()) return PC_Wait_CMD_End_Disk();
   uint64_t t0 = time_us_64();
   while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)
          &&(PCCR_PCSTATE!=PCC_PCS_RESET))

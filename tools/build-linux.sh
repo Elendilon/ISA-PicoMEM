@@ -98,7 +98,7 @@ STUB
 fi
 
 echo "==> Configuring"
-cmake -S "$STAGE_DIR" -B "$BUILD_DIR" -G Ninja
+cmake -S "$STAGE_DIR" -B "$BUILD_DIR" -G Ninja ${CMAKE_EXTRA:-}
 
 echo "==> Building"
 cmake --build "$BUILD_DIR"

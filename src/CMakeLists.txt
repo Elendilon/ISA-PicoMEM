@@ -82,6 +82,15 @@ pico_sdk_init()
   
 ####### Add the Sub directories containing libraries  ########
 
+# os8088's field diagnostics (BUILDING.md): the DMA-port write log at
+# BIOS+5C00h, the Sound Blaster's audio health record at BIOS+5F80h, the
+# silence-by-site counters, and the PC-side A/B switches (BIOS+5C09h pump
+# off, BIOS+5F85h stock sound path) that os8088's tests/pmdma reads and
+# flips. OFF: the fixes they measured are all on, and nothing reads or
+# writes that RAM. `-DOS88_DIAG=1` on the cmake line turns them on.
+set(OS88_DIAG 0 CACHE STRING "os8088 field diagnostics (0/1)")
+add_compile_definitions(OS88_DIAG=${OS88_DIAG})
+
 add_subdirectory(lib/FatFs_SPI)
 add_subdirectory(rom)                       # PicoMEM BIOS binary
 add_subdirectory(isa_devices)               # all ISA devices IO and MEM code

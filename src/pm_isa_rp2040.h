@@ -255,7 +255,9 @@ ISA_Do_MEMW:
 //***         The ISA Cycle is IO               ***
 //*************************************************
 ISA_Do_IO:  // Goto, from the assembly code
+#if OS88_DIAG
   static_assert(PIN_AD0 == DMADBG_PIN_AD0, "dev_dma_iow_dbg reads the data pins at DMADBG_PIN_AD0");
+#endif
 
   uint32_t ISA_IO_Addr;
   uint32_t IO_Device;
@@ -323,8 +325,12 @@ ISA_Do_IO:  // Goto, from the assembly code
         case DEV_SBDSP :
            dev_sbdsp_iow(ISA_IO_Addr,ISAIOW_Data);
           break;  
-        case DEV_DMA :     // os8088-pm114: logged, read twice (dev_dma.cpp)
+        case DEV_DMA :
+#if OS88_DIAG      // os8088-pm114: logged, read twice (dev_dma.cpp)
            dev_dma_iow_dbg(ISA_IO_Addr,ISAIOW_Data,ISA_Addr);
+#else
+           dev_dma_iow(ISA_IO_Addr,ISAIOW_Data);
+#endif
           break;  
 #endif
 #endif //USE_AUDIO
