@@ -1326,7 +1326,6 @@ void PM_ExecCMD()
         extern void pm_disk_audio_pump(void);
         if (!PM_DP_RAM[AH_STOCK]) pm_pccmd_wait_hook = pm_disk_audio_pump;
         INT13_DiskHandler();        
-        pm_pccmd_wait_hook = 0;
         PM_SITE_OUT();
         uint32_t ah_dt = (uint32_t) (time_us_64() - ah_t0);
         ah_inc(AH_I13N); ah_max(AH_I13MAX, ah_dt); ah_add(AH_I13SUM, ah_dt);
@@ -1340,6 +1339,9 @@ void PM_ExecCMD()
 
      PM_PICO_EnablePSRAM();   // Re enable the PSRAM for the Memory emulation
 	   PC_End();                // Tell the PC Command loop to end
+     pm_pccmd_wait_hook = 0;  // os8088-pm114: ...and PC_End's handshake is a
+                              // PC-command wait too (AH05: 0A88h, the one
+                              // silence left in a Snow Wolf play)
   
      if (PM_Int13h_LEDCount==6) {
         pm_led(0);
