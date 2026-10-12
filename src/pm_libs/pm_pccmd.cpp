@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * pm_pccmd.cpp : API to send Command to the PC (BIOS) The BIOS command Slave mode must be enabled.
  */
 
+#include "../pm_site.h"              // os8088-pm114
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -87,9 +88,11 @@ bool PC_Wait_CMD_End_Timeout(uint32_t delay)
 
   PCC_API_STATUS=PCC_API_WAITCMDEND;
   initial_time=time_us_64();
+  PM_SITE_IN(PMS_PCCMD);                // os8088-pm114 (pm_site.h)
   do {
-      if ((time_us_64()-initial_time)>delay) { PCC_API_STATUS=PCC_API_END; return false; }
+      if ((time_us_64()-initial_time)>delay) { PM_SITE_OUT(); PCC_API_STATUS=PCC_API_END; return false; }
      } while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET));
+  PM_SITE_OUT();
 
   if (PCCR_PCSTATE==PCC_PCS_RESET)  { PCC_API_STATUS=PCC_API_END; return false; } // Reset Status, no more command can be sent
   return true;
