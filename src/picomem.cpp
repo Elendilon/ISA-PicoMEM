@@ -340,6 +340,7 @@ PM_DP_RAM[DMADBG_NSB] = DMADBG_NS;
 PM_DP_RAM[DMADBG_ESZB] = DMADBG_ESZ;
 #endif
 ah_init();               // os8088-pm114: the audio health record (pm_ahealth.h)
+dk_init();               // ...and the disk read record
 
 } //PM_BASE_DEV_Init
 #endif // !BOARD_WM10

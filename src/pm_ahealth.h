@@ -68,8 +68,33 @@ extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars
 #error "pm_audio.h reads AH_STOCK as 0x1F85"
 #endif
 
+// os8088-pm114: the DISK READ record, 'DK01' (os8088's tests/pmdma K key):
+// what the card's int 13h reads cost, in total and a sector, and the switch
+// back to the stock sector loop (F). In the DMA copy buffer's last 64 bytes,
+// which its 768-byte maximum copy never reaches.
+#define DK_OFFS     0x1BC0
+#define DK_STOCK    (DK_OFFS+4)     // byte: nonzero = the stock sector loop
+#define DK_RESET    (DK_OFFS+5)     // byte: the PC writes 1, the next read clears
+#define DK_CALLS    (DK_OFFS+8)     // int 13h reads served (AH=02h)
+#define DK_SECT     (DK_OFFS+12)    // sectors they read
+#define DK_MULTI    (DK_OFFS+16)    // ...by the multi-sector path
+#define DK_SDUS     (DK_OFFS+20)    // us in the SD reads (FatFs, the card)
+#define DK_WAITUS   (DK_OFFS+24)    // us waiting for the PC to take a copy
+#define DK_CALLUS   (DK_OFFS+28)    // us in the read calls, start to end
+#define DK_SDPS     (DK_OFFS+32)    // the three, a sector
+#define DK_WAITPS   (DK_OFFS+36)
+#define DK_CALLPS   (DK_OFFS+40)
+#define DK_END      (DK_OFFS+44)
+#if DK_END > 0x1C00
+#error "the disk record runs into the DMA write log"
+#endif
+#if (6*1024 + 768) > DK_OFFS
+#error "the disk record overlaps the DMA copy buffer (isa_dma.h)"
+#endif
+
 #if OS88_DIAG
 #define OS88_STOCK() (PM_DP_RAM[AH_STOCK] != 0)   // the A/B: stock sound path
+#define OS88_DISKSTOCK() (PM_DP_RAM[DK_STOCK] != 0) // the A/B: stock disk read
 static inline uint32_t ah_get(uint32_t o)
 {
   return PM_DP_RAM[o] | ((uint32_t) PM_DP_RAM[o+1] << 8) |
@@ -89,6 +114,18 @@ static inline void ah_clear(void)
   PM_DP_RAM[AH_RESET] = 0;
   for (uint32_t o = AH_UNDER; o < AH_END; o++) PM_DP_RAM[o] = 0;
 }
+static inline void dk_clear(void)
+{
+  PM_DP_RAM[DK_RESET] = 0;
+  for (uint32_t o = DK_CALLS; o < DK_END; o++) PM_DP_RAM[o] = 0;
+}
+static inline void dk_init(void)
+{
+  PM_DP_RAM[DK_OFFS] = 'D'; PM_DP_RAM[DK_OFFS+1] = 'K';
+  PM_DP_RAM[DK_OFFS+2] = '0'; PM_DP_RAM[DK_OFFS+3] = '1';
+  PM_DP_RAM[DK_STOCK] = 0; PM_DP_RAM[DK_STOCK+2] = 0; PM_DP_RAM[DK_STOCK+3] = 0;
+  dk_clear();
+}
 static inline void ah_init(void)
 {
   PM_DP_RAM[AH_SIG] = 'A'; PM_DP_RAM[AH_SIG+1] = 'H';
@@ -99,6 +136,8 @@ static inline void ah_init(void)
 #else  // the record and the switch are field diagnostics (CMakeLists.txt):
        // off, the calls and their arguments are not compiled at all
 #define OS88_STOCK() 0
+#define OS88_DISKSTOCK() 0
+#define dk_init()    ((void) 0)
 #define ah_put(o, v) ((void) 0)
 #define ah_inc(o)    ((void) 0)
 #define ah_add(o, v) ((void) 0)
