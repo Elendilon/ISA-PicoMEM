@@ -26,13 +26,7 @@ uint32_t PM_DMA_SendTime;
 #include "../../pm_libs/isa_dma.h"       // ISA/PC DMA code
 #include "../../pm_ahealth.h"             // os8088-pm114: the audio health record
 #if OS88_DIAG
-#include <unistd.h>
 extern "C" volatile uint32_t pm_sd_mixes;    // sd_card_spi.c
-extern char __HeapLimit;
-static uint32_t ah_heap_free(void)         // never 0, so it marks "taken"
-{                                          // (the heap's untouched top only)
-  return (uint32_t) (&__HeapLimit - (char *) sbrk(0)) | 1;
-}
 extern uint32_t DMA_IRQ_Acked;
 extern uint64_t DMA_IRQ_AckTime;
 extern uint64_t ah_copy_req;               // isa_dma.cpp: when the last copy was asked
@@ -224,6 +218,15 @@ static __force_inline void sbdsp_dac_disable() {
 }
 */
 
+#if !USE_HWDMA
+// End of a DMA block : The IRQ is sent by the main loop when the block is read from the PC
+// (Not before, the PC can then write in the block as soon as it has the IRQ)
+static __force_inline void sbdsp_vdma_block_end() {
+    sbdsp.vdma_irq_at[sbdsp.vdma_irq_wr & 7]=sbdsp.vdma_to_send;
+    sbdsp.vdma_irq_wr++;
+}
+#endif
+
 static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
     uint32_t current_interval;
     DBG_ON_1();
@@ -251,7 +254,7 @@ static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
 #if USE_HWDMA            
             bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true); 
 #else              
-            sbdsp.mainloop_action=DSP_MLC_SENDIRQ;
+            sbdsp_vdma_block_end();
 #endif            
             sbdsp.dma_sample_count_rx=0;            
             return current_interval;
@@ -262,7 +265,7 @@ static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
 #if USE_HWDMA            
             bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true);
 #else             
-            sbdsp.mainloop_action=DSP_MLC_SENDIRQ;
+            sbdsp_vdma_block_end();
 #endif
          return 0;
         }
@@ -869,15 +872,17 @@ if ((sbdsp_fifo.samples_received-sbdsp_fifo.samples_sent) < AUDIO_FIFO_START_THR
   if (to_transfer==0) return;
   if (to_transfer==1)
        {
-        afifo_add_sample8(&sbdsp_fifo,isa_dma_buffer_get());
+        if (!afifo_add_sample8(&sbdsp_fifo,isa_dma_buffer_get())) ah_inc(AH_DROP);
         sbdsp.vdma_sent++;
        } else 
        {
         to_transfer = MIN(isa_dma.buffer_level,samples); // Get the number of bytes to transfer to the Audio fifo
 
-        afifo_add_samples8(&sbdsp_fifo, isa_dma_buffer_get_ptr(to_transfer), to_transfer);  
+        if (!afifo_add_samples8(&sbdsp_fifo, isa_dma_buffer_get_ptr(to_transfer), to_transfer))
+            ah_add(AH_DROP, to_transfer);  // os8088-pm114: the whole batch is lost
         sbdsp.vdma_sent+=to_transfer;  // !!! If the else is here, Raptor crack
        }
+  ah_max(AH_FMAX, sbdsp_fifo.samples_received-sbdsp_fifo.samples_sent);  // os8088-pm114
 }
 
 // Worked/Code to call regularly from the main loop
@@ -908,11 +913,13 @@ void sbdsp_dma_worker()
     uint64_t now = time_us_64();
     static uint32_t ah_silbase, ah_sdbase;
     static uint32_t ah_n;
-    if (PM_DP_RAM[AH_RESET] || !ah_get(AH_HEAP)) {
+    static bool ah_once;
+    if (PM_DP_RAM[AH_RESET] || !ah_once) {
+      ah_once = true;
       ah_clear(); ah_silbase = pm_audio_starved; pm_audio_starvemax = 0;
       for (uint32_t i = 0; i < 16; i++) pm_starve_site[i] = 0;
       pm_starve_last = 0; pm_starve_maxat = 0;
-      ah_sdbase = pm_sd_mixes; ah_put(AH_HEAP, ah_heap_free()); }
+      ah_sdbase = pm_sd_mixes; }
     if (!(++ah_n & 63)) {
       ah_put(AH_SILENT, pm_audio_starved - ah_silbase);
       ah_put(AH_SILMAX, pm_audio_starvemax);
@@ -941,6 +948,7 @@ void sbdsp_dma_worker()
       PM_INFO(">MLCRST ");
       sbdsp.vdma_to_send=0;   // Reset the Virtual DMA sample count
       sbdsp.vdma_sent=0;
+      sbdsp.vdma_irq_rd=sbdsp.vdma_irq_wr;  // No more IRQ to send
       isa_dma_buffer_free();  // Free the DMA buffer
       sbdsp.mainloop_action=DSP_MLC_NONE;
       return;
@@ -969,11 +977,11 @@ void sbdsp_dma_worker()
       sbdsp_fifo.samples_received!=sbdsp_fifo.samples_sent)
       sbdsp_fifo.state=FIFO_STATE_RUNNING;
 
-if (sbdsp.mainloop_action==DSP_MLC_SENDIRQ) {  // Perform the reset here, to not change the variable in the middle of the worker execution
- //     PM_INFO(">I ");
+  // Send the block IRQ when all the block bytes are read
+  if ((sbdsp.vdma_irq_rd!=sbdsp.vdma_irq_wr) && ((int32_t)(sbdsp.vdma_sent-sbdsp.vdma_irq_at[sbdsp.vdma_irq_rd & 7])>=0)) {
       DBG_ON_IRQ_SB();
       bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true);
-      sbdsp.mainloop_action=DSP_MLC_NONE;
+      sbdsp.vdma_irq_rd++;
       return;
      }
 
@@ -990,7 +998,7 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
   int16_t  fres;
   res8u=sbdsp.prev_sample8u;
   { uint32_t lvl = sbdsp_fifo.samples_received - sbdsp_fifo.samples_sent;
-    if (sbdsp.vdma_to_send) { ah_min(AH_MINLVL, lvl); ah_put(AH_LVL, lvl); } }
+    if (sbdsp.vdma_to_send) { ah_min(AH_MINLVL, lvl); ah_max(AH_FMAX, lvl); } }
   /*
  if (sbdsp.mainloop_action==DSP_MLC_SET_TIME_CST)
     {

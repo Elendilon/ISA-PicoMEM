@@ -36,14 +36,17 @@ extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars
 #define AH_I13N     (AH_OFFS+32)    // int 13h calls served
 #define AH_I13MAX   (AH_OFFS+36)    // the longest of them, us
 #define AH_WORKN    (AH_OFFS+40)    // SB worker passes with a stream running
-#define AH_LVL      (AH_OFFS+44)    // the FIFO's level when last mixed
+#define AH_FMAX     (AH_OFFS+44)    // the FIFO's highest level, samples (AH06;
+                                    // before, its level when last mixed)
 #define AH_I13SUM   (AH_OFFS+48)    // int 13h time in all, us
 #define AH_SILENT   (AH_OFFS+52)    // output buffers (64 samples, 1.29 ms)
                                     // the speaker got SILENCE for: the
                                     // mixer had none ready
 #define AH_SILMAX   (AH_OFFS+56)    // the longest run of them
 #define AH_SDMIX    (AH_OFFS+60)    // mixes run inside the SD driver's waits
-#define AH_HEAP     (AH_OFFS+64)    // heap never yet handed out, bytes, at
+#define AH_DROP     (AH_OFFS+64)    // samples DROPPED: copied from the PC but
+                                    // the FIFO had no room (AH06; before, the
+                                    // heap never yet handed out, bytes, at
                                     // the last reset (holes not counted)
 #define AH_SITE     (AH_OFFS+68)    // AH_NSITE x 32-bit: the silent buffers
                                     // by what core 0 ran (pm_site.h)
@@ -84,7 +87,7 @@ static inline void ah_clear(void)
 static inline void ah_init(void)
 {
   PM_DP_RAM[AH_SIG] = 'A'; PM_DP_RAM[AH_SIG+1] = 'H';
-  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '5';
+  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '6';
   for (uint32_t o = AH_STOCK; o < AH_UNDER; o++) PM_DP_RAM[o] = 0;
   ah_clear();
 }
