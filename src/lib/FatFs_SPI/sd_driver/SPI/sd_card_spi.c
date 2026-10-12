@@ -189,7 +189,6 @@
 #include "sd_card_spi.h"
 
 #include "../../../../pm_debug.h"
-#include "../../../../pm_site.h"
 void pm_audio_domix();
 
 // os8088-pm114: the card's speaker queue is 5 ms (pm_audio.h) and the mixer
@@ -380,12 +379,10 @@ static bool sd_wait_ready(sd_card_t *sd_card_p, uint32_t timeout) {
     // Keep sending dummy clocks with DI held high until the card releases the
     // DO line
     uint32_t start = millis();
-    PM_SITE_IN(PMS_SDWAIT);
     do {
         resp = sd_spi_write_read(sd_card_p, 0xFF);
         if (resp != 0xFF) sd_wait_mix();
     } while (resp != 0xFF && millis() - start < timeout);
-    PM_SITE_OUT();
     /* Checking for 0xFF provides a little extra margin to 
     make sure that DO has gone high and stayed there.
     (the alternative is to accept the first non-zero byte) */
@@ -765,15 +762,12 @@ static bool sd_wait_token(sd_card_t *sd_card_p, uint8_t token) {
     //TRACE_PRINTF("%s(0x%02x)\n", __FUNCTION__, token);
 
     uint32_t start = millis();
-    PM_SITE_IN(PMS_SDWAIT);
     do {
         if (token == sd_spi_read(sd_card_p)) {
-            PM_SITE_OUT();
             return true;
         }
         sd_wait_mix();
     } while (millis() - start < sd_timeouts.sd_command);
-    PM_SITE_OUT();
 
     DBG_PRINTF("sd_wait_token: timeout\n");
     return false;

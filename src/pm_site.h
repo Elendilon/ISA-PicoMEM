@@ -22,9 +22,9 @@ enum {
   PMS_CMD,        // PM_ExecCMD, any PC command but int 13h
   PMS_I13,        // INT13_DiskHandler, outside the stretches below
   PMS_FAT,        // FatFs and the SD transfers of a disk-image sector
-  PMS_SDWAIT,     // the SD driver waiting for a token or for ready
+  PMS_SDWAIT,     // (not set: the SD waits count as FAT - see AH04 notes)
   PMS_PCWAIT,     // waiting for the PC's sector copy, audio pumped
-  PMS_PCCMD,      // waiting for the PC to end a command, nothing pumped
+  PMS_PCCMD,      // (not set: a PC command end counts as the caller's)
   PMS_NET,        // ne2000_initiate_send
   PMS_N = 12
 };
