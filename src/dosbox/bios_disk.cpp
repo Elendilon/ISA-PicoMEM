@@ -43,6 +43,18 @@ extern pio_spi_inst_t psram_spi;
 #include "dev_memory.h"   // Need access to the emulated RAM infos
 #include "pm_pccmd.h"
 #include "dev_audiomix.h"     // For Audio Pause / Resume
+#if USE_SBDSP
+#include "dev_sbdsp.h"
+#endif
+
+// Mix the audio and run the Sound Blaster DMA, called while waiting during a disk access
+void pm_disk_audio_pump()
+{
+#if USE_SBDSP
+  dev_sbdsp_update();
+#endif
+  pm_audio_domix();
+}
 
 //PM File functions:
 #include "ff.h"
@@ -568,7 +580,7 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
                 PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
           		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
 
-				pm_audio_domix();   // Insert Audio Mix during the wait time
+				pm_disk_audio_pump();   // Insert Audio Mix during the wait time
 
 			   break;
 		    case MEM_RAM:  // ** Disk Read to the PC RAM emulated in the Pico SRAM
@@ -649,7 +661,7 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 				PM_PICO_EnablePSRAM();
 				PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
 
-				pm_audio_domix();   // Insert Audio Mix during the wait time
+				pm_disk_audio_pump();   // Insert Audio Mix during the wait time
 
 		        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
 				PM_EnableSD();

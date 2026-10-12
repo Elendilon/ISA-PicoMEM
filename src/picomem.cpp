@@ -405,7 +405,11 @@ vreg_set_voltage(CPU_VOLTAGE);
 busy_wait_ms(10);
 set_sys_clock_khz(PM_SYS_CLK*1000, true);
 #else
+#if PICO_RP2040
+vreg_set_voltage(VREG_VOLTAGE_1_20);    // RP2040 at 280MHz
+#else
 vreg_set_voltage(VREG_VOLTAGE_1_15);
+#endif
 set_sys_clock_khz(PM_SYS_CLK*1000, true);
 #endif
 

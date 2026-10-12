@@ -67,6 +67,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 extern void Send_PC_CMD(uint8_t CommandNB);  // Send a Command, don't touch parameters and wait for its start
 extern bool PC_Wait_CMD_End_Timeout(uint32_t delay);
+extern void (*volatile pm_pccmd_wait_hook)(void);
 extern bool PC_Wait_End_Timeout(uint32_t delay);
 extern bool PC_Wait_CMD_End();
 extern void PC_End();
