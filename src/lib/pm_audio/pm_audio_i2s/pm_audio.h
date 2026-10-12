@@ -3,6 +3,7 @@
 #include <stdlib.h>  // for "abs"
 
 #include "../../../pm_debug.h"
+#include "../../../pm_site.h"        // os8088-pm114
 
 #define PM_AUDIO_FREQUENCY 49716   // Adlib output frequency
 //#define PM_AUDIO_FREQUENCY 44100
@@ -41,6 +42,7 @@ extern volatile pm_audio_t pm_audio;
 extern volatile uint32_t pm_audio_starved;   // os8088-pm114: silent buffers
 extern volatile uint32_t pm_audio_starverun; //  played, and the longest run
 extern volatile uint32_t pm_audio_starvemax; //  of them (pm_ahealth.h)
+extern volatile uint32_t pm_starve_site[16]; //  by what core 0 ran (pm_site.h)
 
 extern bool pm_audio_init(uint32_t sample_freq);
 extern bool pm_audio_stop();
@@ -64,6 +66,7 @@ if ((pm_buffers_ready)!=0)
    }
 //PM_INFO("!Z");
 pm_audio_starved++;
+pm_starve_site[pm_site & 15]++;
 if (++pm_audio_starverun>pm_audio_starvemax) pm_audio_starvemax=pm_audio_starverun;
 return pm_audio.poolend;  // poolend contains an empty buffer
 }

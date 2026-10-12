@@ -17,6 +17,7 @@
 
 // #define HDD_DISPLAY
 
+#include "../pm_site.h"              // os8088-pm114
 #include <stdio.h>
 #include "pico/stdlib.h"
 
@@ -67,7 +68,12 @@ static inline void pm_audio_pump(void)
 }
 
 // PC_Wait_CMD_End_Disk, pumping the audio while the PC copies the sector
+static bool pm_wait_disk_x(void);
 static bool pm_wait_disk(void)
+{
+  PM_SITE_IN(PMS_PCWAIT); bool r = pm_wait_disk_x(); PM_SITE_OUT(); return r;
+}
+static bool pm_wait_disk_x(void)
 {
   if (PM_DP_RAM[DMADBG_PUMPOFF]) return PC_Wait_CMD_End_Disk();
   uint64_t t0 = time_us_64();
@@ -275,8 +281,10 @@ Bit8u imageDisk::Read_AbsoluteSector(Bit32u sectnum, void * data) {
 	Bit32u 	bytenum = sectnum * sector_size;
     uint byteread;
     FRESULT fr;
+	PM_SITE_IN(PMS_FAT);
 	f_lseek(diskimg,bytenum);
 	fr = f_read(diskimg,data,sector_size,&byteread);
+	PM_SITE_OUT();
 	if (FR_OK != fr) 
 	{ 
 	  PM_ERROR("Fail: %d \n",fr);
@@ -304,8 +312,10 @@ Bit8u imageDisk::Write_AbsoluteSector(Bit32u sectnum, void *data) {
     FRESULT fr;
 
 //PM_INFO("fwrite: pos %d - ",bytenum);
+ { PM_SITE_IN(PMS_FAT);
 	f_lseek(diskimg,bytenum);
 	fr = f_write(diskimg,data,sector_size,&bytewrite);
+	PM_SITE_OUT(); }
 	if (FR_OK != fr) 
 	{ 
 	  PM_ERROR("Fail: %d \n",fr);

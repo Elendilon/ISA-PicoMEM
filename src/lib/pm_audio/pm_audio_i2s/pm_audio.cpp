@@ -30,6 +30,8 @@ volatile pm_audio_t pm_audio;
 volatile uint32_t pm_audio_starved;    // os8088-pm114 (pm_audio.h)
 volatile uint32_t pm_audio_starverun;
 volatile uint32_t pm_audio_starvemax;
+volatile uint32_t pm_starve_site[16];
+volatile uint8_t pm_site;                  // pm_site.h (C linkage there)
 bool pm_i2s_active=false;
 bool pm_pool_initialized=false;
 

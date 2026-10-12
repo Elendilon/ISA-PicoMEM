@@ -899,12 +899,17 @@ void sbdsp_dma_worker()
     static uint32_t ah_acked;
     uint64_t now = time_us_64();
     static uint32_t ah_silbase, ah_sdbase;
+    static uint32_t ah_n;
     if (PM_DP_RAM[AH_RESET] || !ah_get(AH_HEAP)) {
       ah_clear(); ah_silbase = pm_audio_starved; pm_audio_starvemax = 0;
+      for (uint32_t i = 0; i < 16; i++) pm_starve_site[i] = 0;
       ah_sdbase = pm_sd_mixes; ah_put(AH_HEAP, ah_heap_free()); }
-    ah_put(AH_SILENT, pm_audio_starved - ah_silbase);
-    ah_put(AH_SILMAX, pm_audio_starvemax);
-    ah_put(AH_SDMIX, pm_sd_mixes - ah_sdbase);
+    if (!(++ah_n & 63)) {
+      ah_put(AH_SILENT, pm_audio_starved - ah_silbase);
+      ah_put(AH_SILMAX, pm_audio_starvemax);
+      ah_put(AH_SDMIX, pm_sd_mixes - ah_sdbase);
+      for (uint32_t i = 0; i < AH_NSITE; i++) ah_put(AH_SITE + 4*i, pm_starve_site[i]);
+    }
     // The cushion: the FIFO is filled just in time off the sample timer, so
     // the only sound held in hand is what it waits for before it starts.
     sbdsp_fifo.start_thr = PM_DP_RAM[AH_STOCK] ? AUDIO_FIFO_START_THRESHOLD

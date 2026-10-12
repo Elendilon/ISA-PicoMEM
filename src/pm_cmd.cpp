@@ -17,7 +17,8 @@ If not, see <https://www.gnu.org/licenses/>.
  * picomem.cpp : Contains the Main initialisazion, ISA Bus Cycles management and commands executed by the Pi Pico
  */ 
 
- #include "pm_ahealth.h"   // os8088-pm114: the audio health record
+ #include "pm_site.h"                 // os8088-pm114
+#include "pm_ahealth.h"   // os8088-pm114: the audio health record
 #include <sys/time.h>
  #include <time.h>
  #include <ctime>
@@ -1321,7 +1322,9 @@ void PM_ExecCMD()
       {
         if (PM_Int13h_LEDCount++==3) pm_led(1);  // Don't blink the LED all the time
         uint64_t ah_t0 = time_us_64();          // os8088-pm114: the audio health
+        PM_SITE_IN(PMS_I13);
         INT13_DiskHandler();        
+        PM_SITE_OUT();
         uint32_t ah_dt = (uint32_t) (time_us_64() - ah_t0);
         ah_inc(AH_I13N); ah_max(AH_I13MAX, ah_dt); ah_add(AH_I13SUM, ah_dt);
       }
@@ -2152,6 +2155,7 @@ PM_INFO("Init completed\n");
 
 for (;;)  // Core 1 Main Loop (Commands)
 {
+pm_site = PMS_LOOP;                // os8088-pm114 (pm_site.h)
 #if BOARD_WM10
 // WonderMCA: minimal Core 0 loop — only process commands via FIFO
 if (multicore_fifo_rvalid()) {
@@ -2184,7 +2188,9 @@ continue;  // Skip all ISA-specific update code below
 #if USE_USBHOST
 if (USB_Host_Enabled)
  {
+  pm_site = PMS_USB;
   tuh_task();
+  pm_site = PMS_LOOP;
 
   if (pm_mouse.event&&MOUSE_Enabled)
    {
@@ -2209,17 +2215,21 @@ if (USB_Host_Enabled)
 #endif
 
 #if USE_SBDSP
+  pm_site = PMS_SBW;
   dev_sbdsp_update();  
 #endif
 
 #if !BOARD_WM10
+pm_site = PMS_MIX;
 if (dev_audiomix.enabled) pm_audio_domix();
 #endif
+pm_site = PMS_LOOP;
 
 absolute_time_t pm_delay_delta=absolute_time_diff_us(get_absolute_time(), pm_cmd_100msdelay);
 // Portion of the code executed every 100ms for fast update code (Display)
 if (absolute_time_diff_us(get_absolute_time(), pm_cmd_100msdelay) < 0)
  {
+  pm_site = PMS_TICK;
 #if DEV_POST_Enable  // POST Code display
    if (!dev_audiomix.dev_active) dev_post_update();  // Update POST Display, Only when there is no Audio
 #endif
@@ -2309,6 +2319,7 @@ if (absolute_time_diff_us(get_absolute_time(), pm_cmd_100msdelay) < 0)
      }  // 1s delay end
 
     pm_cmd_100msdelay = make_timeout_time_us(100000);  // Update the 100ms delay value (100000 is 100ms)
+    pm_site = PMS_LOOP;
   } // 100ms delay end (For Display update)
 
 if (multicore_fifo_rvalid())
@@ -2317,7 +2328,9 @@ if (multicore_fifo_rvalid())
    {
     case 0 :
             BV_CmdRunning=PM_Command;  // To allow the BIOS to detect when the command really start
+            pm_site = PMS_CMD;
             PM_ExecCMD();
+            pm_site = PMS_LOOP;
             BV_CmdRunning=0;
             break;
     case 1 : PM_INFO("IR ");
@@ -2325,7 +2338,9 @@ if (multicore_fifo_rvalid())
 #if PM_WIFI
 #if USE_NE2000
     case FIFO_NE2K_SEND:
+             pm_site = PMS_NET;
              ne2000_initiate_send();
+             pm_site = PMS_LOOP;
              break;
 #endif
 #endif
