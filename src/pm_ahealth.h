@@ -13,7 +13,7 @@
 extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars.h
 
 #define AH_OFFS     0x1F80          // past the DMA write log (ends 1F80h)
-#define AH_SIG      (AH_OFFS+0)     // 'AH05' (01: no AH_STOCK, 02: no AH_SILENT,
+#define AH_SIG      (AH_OFFS+0)     // 'AH08' (01: no AH_STOCK, 02: no AH_SILENT,
                                     // 03: no AH_SITE, 04: no AH_SLAST and
                                     // AH_UNDER counted every empty pass)
 #define AH_RESET    (AH_OFFS+4)     // byte: the PC writes 1, core 0 clears all
@@ -57,7 +57,10 @@ extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars
 #define AH_SLAST    (AH_OFFS+116)   // the last silent buffer: site << 8 |
                                     // the PM command (PM_Command) running
 #define AH_SMAXAT   (AH_OFFS+120)   // ...and the longest run's first
-#define AH_END      (AH_OFFS+124)
+#define AH_STALE    (AH_OFFS+124)   // AH08: bytes a copy brought from the PC
+                                    // that a new DMA start then made stale
+                                    // (the 8237 reprogrammed): dropped
+#define AH_END      (AH_OFFS+128)
 #if AH_END > 0x2000
 #error "the audio health record runs off the shared RAM"
 #endif
@@ -89,7 +92,7 @@ static inline void ah_clear(void)
 static inline void ah_init(void)
 {
   PM_DP_RAM[AH_SIG] = 'A'; PM_DP_RAM[AH_SIG+1] = 'H';
-  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '7';
+  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '8';
   for (uint32_t o = AH_STOCK; o < AH_UNDER; o++) PM_DP_RAM[o] = 0;
   ah_clear();
 }

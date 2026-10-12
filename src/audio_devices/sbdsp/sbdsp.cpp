@@ -962,6 +962,15 @@ void sbdsp_dma_worker()
    }
 */
 
+  // A copy is a whole block, so when a transfer stops, the end of the last
+  // one is left in the buffer. Drop it once the PC has programmed the DMA
+  // again: it is not part of the new transfer, and counting it would send
+  // every block IRQ early by as much.
+  if (isa_dma.buffer_level && dmachregs[sbdsp.dma8].changed) {
+      ah_add(AH_STALE, isa_dma.buffer_level);   // os8088-pm114
+      isa_dma_buffer_free();
+     }
+
   if (sbdsp.vdma_to_send!=sbdsp.vdma_sent) {  // Execute only if there is data to transfer
   DBG_ON_SB_UPD();
   dev_sbdsp_enable_mix(); // Enable mixing
