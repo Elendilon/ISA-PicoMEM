@@ -24,6 +24,10 @@ uint32_t PM_DMA_SendTime;
 #include "pm_defines.h"
 #include "pm_audio.h"
 #include "../../pm_libs/isa_dma.h"       // ISA/PC DMA code
+#include "../../pm_ahealth.h"             // os8088-pm114: the audio health record
+extern uint32_t DMA_IRQ_Acked;
+extern uint64_t DMA_IRQ_AckTime;
+extern uint64_t ah_copy_req;               // isa_dma.cpp: when the last copy was asked
 #include "../../pm_libs/bus_irq.h"       // ISA/PC IRQ code
 #include "dev_sbdsp.h"
 #include "audio_fifo.h"
@@ -883,6 +887,22 @@ void sbdsp_dma_worker()
 
 #else
 
+  { // os8088-pm114: the audio health record (pm_ahealth.h)
+    static uint64_t ah_last;
+    static uint32_t ah_acked;
+    uint64_t now = time_us_64();
+    if (PM_DP_RAM[AH_RESET]) ah_clear();
+    if (sbdsp.vdma_to_send) {
+      ah_inc(AH_WORKN);
+      if (ah_last) ah_max(AH_MAXGAP, (uint32_t) (now - ah_last));
+      ah_max(AH_MAXBACK, sbdsp.vdma_to_send - sbdsp.vdma_sent);
+      if (DMA_IRQ_Acked != ah_acked && DMA_IRQ_AckTime > ah_copy_req)
+        ah_max(AH_MAXCOPY, (uint32_t) (DMA_IRQ_AckTime - ah_copy_req));
+    }
+    ah_acked = DMA_IRQ_Acked;
+    ah_last = sbdsp.vdma_to_send ? now : 0;
+  }
+
 #if DBG_PIN_AUDIO   
   if (SVAR_IRQ->PM_IRR) DBG_ON_INT_SB();
      else DBG_OFF_INT_SB();
@@ -930,6 +950,8 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
   uint16_t prev_increment;
   int16_t  fres;
   res8u=sbdsp.prev_sample8u;
+  { uint32_t lvl = sbdsp_fifo.samples_received - sbdsp_fifo.samples_sent;
+    if (sbdsp.vdma_to_send) { ah_min(AH_MINLVL, lvl); ah_put(AH_LVL, lvl); } }
   /*
  if (sbdsp.mainloop_action==DSP_MLC_SET_TIME_CST)
     {
@@ -949,6 +971,7 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
         if (sbdsp.readsample)
              if (!afifo_take_sample8(&sbdsp_fifo, &res8u)) 
               {
+                 if (sbdsp.vdma_to_send) ah_inc(AH_UNDER);  // os8088-pm114
                  sbdsp.prev_sample8u=0x80;  // If the FIFO is empty, return silence
                 return;
               }

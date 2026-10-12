@@ -9,6 +9,7 @@
 #include "dev_memory.h"
 #include "dev_audiomix.h"
 #include "isa_dma.h"
+#include "../pm_ahealth.h"   // os8088-pm114
 #include "isa_irq.h"
 
 #if USE_HWDMA
@@ -25,6 +26,7 @@ uint32_t DMA_IRQ_Sent;   // To count the NB of DMA IRQ sent and acknowledge (For
 uint32_t DMA_IRQ_Acked;
 
 uint64_t DMA_IRQ_AckTime;
+uint64_t ah_copy_req;     // os8088-pm114: when the last copy was asked (pm_ahealth.h)
 uint64_t DMA_Start_Time;
 
 #define DMA_IRQ_START_WAIT 500 // Need 500us between the Ack and next Request
@@ -142,8 +144,10 @@ if (DMA_IRQ_Sent!=DMA_IRQ_Acked) { // If the previous DMA Copy command was not a
    // DMA Channel
    PM_DP_RAM[OFFS_IRQ_PARAM+14]=channel;
 
+   ah_copy_req=time_us_64();                     // os8088-pm114
    isa_pm_irq_raise(IRQ_R_DMACOPY,1,force_irq);  // Send a DMA Copy interrupt request
    DMA_IRQ_Sent++;
+   ah_inc(AH_COPIES);
 //   PM_INFO("S%dA%d",DMA_IRQ_Sent, DMA_IRQ_Acked);
 }
 

@@ -17,7 +17,8 @@ If not, see <https://www.gnu.org/licenses/>.
  * picomem.cpp : Contains the Main initialisazion, ISA Bus Cycles management and commands executed by the Pi Pico
  */ 
 
- #include <sys/time.h>
+ #include "pm_ahealth.h"   // os8088-pm114: the audio health record
+#include <sys/time.h>
  #include <time.h>
  #include <ctime>
 
@@ -1319,7 +1320,10 @@ void PM_ExecCMD()
      if (PM_EnableSD()) 
       {
         if (PM_Int13h_LEDCount++==3) pm_led(1);  // Don't blink the LED all the time
+        uint64_t ah_t0 = time_us_64();          // os8088-pm114: the audio health
         INT13_DiskHandler();        
+        uint32_t ah_dt = (uint32_t) (time_us_64() - ah_t0);
+        ah_inc(AH_I13N); ah_max(AH_I13MAX, ah_dt); ah_add(AH_I13SUM, ah_dt);
       }
        else
       {
