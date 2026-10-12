@@ -1328,7 +1328,7 @@ void PM_ExecCMD()
         INT13_DiskHandler();        
         PM_SITE_OUT();
         uint32_t ah_dt = (uint32_t) (time_us_64() - ah_t0);
-        ah_inc(AH_I13N); ah_max(AH_I13MAX, ah_dt); ah_add(AH_I13SUM, ah_dt);
+        (void) ah_dt;
       }
        else
       {

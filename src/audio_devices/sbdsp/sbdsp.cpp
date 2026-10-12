@@ -355,6 +355,9 @@ void sbdsp_start_pcm_dma(bool autoinit, uint16_t xfer_size) {
      sbdsp.dma_rx_width=sbdsp.dma_stereo ? 2 : 1;
      sbdsp.dma_xfer_count = (xfer_size + 1) / sbdsp.dma_rx_width;
      sbdsp.dma_xfer_count_left = sbdsp.dma_xfer_count;     
+     ah_put(AH_DSPRATE, sbdsp.sample_rate);       // os8088-pm114: what the DSP took
+     ah_put(AH_DSPBLK, (uint32_t) xfer_size + 1 + (autoinit ? 0x10000 : 0));
+     ah_inc(AH_DSPSTART);
      sbdsp_dma_enable();
     }
 
@@ -981,6 +984,7 @@ void sbdsp_dma_worker()
   if ((sbdsp.vdma_irq_rd!=sbdsp.vdma_irq_wr) && ((int32_t)(sbdsp.vdma_sent-sbdsp.vdma_irq_at[sbdsp.vdma_irq_rd & 7])>=0)) {
       DBG_ON_IRQ_SB();
       bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true);
+      ah_inc(AH_IRQS);
       sbdsp.vdma_irq_rd++;
       return;
      }
@@ -998,7 +1002,7 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
   int16_t  fres;
   res8u=sbdsp.prev_sample8u;
   { uint32_t lvl = sbdsp_fifo.samples_received - sbdsp_fifo.samples_sent;
-    if (sbdsp.vdma_to_send) { ah_min(AH_MINLVL, lvl); ah_max(AH_FMAX, lvl); } }
+    if (sbdsp.vdma_to_send) ah_max(AH_FMAX, lvl); }
   /*
  if (sbdsp.mainloop_action==DSP_MLC_SET_TIME_CST)
     {

@@ -26,19 +26,22 @@ extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars
                                     // ran: once a dry spell (AH05; before
                                     // it, every mixer pass that found it
                                     // empty, idle or not)
-#define AH_MINLVL   (AH_OFFS+12)    // the FIFO's lowest level, samples
+#define AH_DSPRATE  (AH_OFFS+12)    // AH07: the sample rate the DSP took at
+                                    // its last DMA start, Hz (was the FIFO's
+                                    // lowest level)
 #define AH_MAXBACK  (AH_OFFS+16)    // most samples the timer asked for that
                                     // were not yet in the FIFO
 #define AH_MAXGAP   (AH_OFFS+20)    // longest gap between two SB worker
                                     // passes with a stream running, us
 #define AH_MAXCOPY  (AH_OFFS+24)    // longest copy request -> PC's ack, us
 #define AH_COPIES   (AH_OFFS+28)    // copy requests made
-#define AH_I13N     (AH_OFFS+32)    // int 13h calls served
-#define AH_I13MAX   (AH_OFFS+36)    // the longest of them, us
+#define AH_DSPBLK   (AH_OFFS+32)    // AH07: its block, bytes, | autoinit << 16
+                                    // (was int 13h calls served)
+#define AH_DSPSTART (AH_OFFS+36)    // AH07: DMA starts (was the longest int 13h)
 #define AH_WORKN    (AH_OFFS+40)    // SB worker passes with a stream running
 #define AH_FMAX     (AH_OFFS+44)    // the FIFO's highest level, samples (AH06;
                                     // before, its level when last mixed)
-#define AH_I13SUM   (AH_OFFS+48)    // int 13h time in all, us
+#define AH_IRQS     (AH_OFFS+48)    // AH07: block IRQs sent (was int 13h time)
 #define AH_SILENT   (AH_OFFS+52)    // output buffers (64 samples, 1.29 ms)
                                     // the speaker got SILENCE for: the
                                     // mixer had none ready
@@ -82,12 +85,11 @@ static inline void ah_clear(void)
 {
   PM_DP_RAM[AH_RESET] = 0;
   for (uint32_t o = AH_UNDER; o < AH_END; o++) PM_DP_RAM[o] = 0;
-  ah_put(AH_MINLVL, 0xFFFFFFFFu);
 }
 static inline void ah_init(void)
 {
   PM_DP_RAM[AH_SIG] = 'A'; PM_DP_RAM[AH_SIG+1] = 'H';
-  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '6';
+  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '7';
   for (uint32_t o = AH_STOCK; o < AH_UNDER; o++) PM_DP_RAM[o] = 0;
   ah_clear();
 }
