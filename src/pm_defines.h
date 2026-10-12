@@ -225,6 +225,8 @@ If not, see <https://www.gnu.org/licenses/>.
 // than ~191 bytes.
 #define DMADBG_OFFS   0x1C00
 #define DMADBG_MODE   (DMADBG_OFFS+8)    // 0 = the early read (stock), k = sample k-1
+#define DMADBG_PUMPOFF (DMADBG_OFFS+9)   // nonzero: the disk loop does NOT pump the
+                                         // Sound Blaster (bios_disk.cpp; the A/B)
 #define DMADBG_IDX    (DMADBG_OFFS+10)   // word: writes logged, ever (wraps)
 #define DMADBG_TICKS  (DMADBG_OFFS+12)   // word: cycles the last sampling took
 #define DMADBG_NSB    (DMADBG_OFFS+14)   // byte: DMADBG_NS

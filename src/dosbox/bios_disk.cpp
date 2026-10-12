@@ -43,6 +43,45 @@ extern pio_spi_inst_t psram_spi;
 #include "dev_memory.h"   // Need access to the emulated RAM infos
 #include "pm_pccmd.h"
 #include "dev_audiomix.h"     // For Audio Pause / Resume
+#if USE_SBDSP
+#include "dev_sbdsp.h"        // os8088-pm114: the SB worker, pumped below
+#endif
+
+// os8088-pm114: KEEP THE SOUND BLASTER FED THROUGH A DISK CALL. On a 1.x the
+// SB's virtual DMA - asking the PC for each 128-byte copy, moving it into the
+// audio FIFO, raising the block IRQ - is sbdsp_dma_worker(), and only the
+// main loop called it. An int 13h here holds the main loop for the whole
+// call, so a disk-heavy stream (a 460 KB/s video from the card's own disk)
+// starved the SB: the output repeated, and its clock, which the PC plays to,
+// ran ~30% slow (os8088 docs/FIELD-NOTES.md 66). The mixer was already pumped
+// per sector; this pumps the SB worker beside it, and while the PC copies a
+// sector too. The copy request is the card's own IRQ and parameter block, not
+// the PC-command channel this call holds. A nonzero byte at DMADBG_PUMPOFF
+// turns it off, for an A/B by ear.
+static inline void pm_audio_pump(void)
+{
+#if USE_SBDSP
+  if (!PM_DP_RAM[DMADBG_PUMPOFF]) dev_sbdsp_update();
+#endif
+  pm_audio_domix();
+}
+
+// PC_Wait_CMD_End_Disk, pumping the audio while the PC copies the sector
+static bool pm_wait_disk(void)
+{
+  if (PM_DP_RAM[DMADBG_PUMPOFF]) return PC_Wait_CMD_End_Disk();
+  uint64_t t0 = time_us_64();
+  while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)
+         &&(PCCR_PCSTATE!=PCC_PCS_RESET))
+    {
+     pm_audio_pump();
+     if ((time_us_64()-t0) > 120000) {      // the stock wait's 20 + 100 ms
+       PM_ERROR("PC_MemCopyW_512b: Timeout 120ms\n");
+       return false;
+      }
+    }
+  return (PCCR_PCSTATE!=PCC_PCS_RESET);
+}
 
 //PM File functions:
 #include "ff.h"
@@ -568,7 +607,7 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
                 PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
           		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
 
-				pm_audio_domix();   // Insert Audio Mix during the wait time
+				pm_audio_pump();    // Insert Audio Mix (and the SB worker) during the wait time
 
 			   break;
 		    case MEM_RAM:  // ** Disk Read to the PC RAM emulated in the Pico SRAM
@@ -649,9 +688,9 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 				PM_PICO_EnablePSRAM();
 				PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
 
-				pm_audio_domix();   // Insert Audio Mix during the wait time
+				pm_audio_pump();    // Insert Audio Mix (and the SB worker) during the wait time
 
-		        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
+		        if (!pm_wait_disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
 				PM_EnableSD();
 			   break;
 		    } //End switch(mt_beg)
@@ -664,7 +703,7 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 #endif
 		 }  // End For (Read Loop)
 
-		 if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
+		 if (!pm_wait_disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
 
 		reg_ah = 0x00;
 		reg_ClearCF();
@@ -708,7 +747,7 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 // ** The PC Copy the first Sector to the Buffer
         PM_PICO_EnablePSRAM();  // First sector Copy is done with no SD Access at the same time
 		PC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);
-        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
+        if (!pm_wait_disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
         PM_EnableSD();
 
 // **** Disk Write Loop ****
@@ -743,7 +782,7 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 			  PM_INFO("%d > ",mt_beg);
 			 }
  
-		 if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
+		 if (!pm_wait_disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
 
 #ifdef PIMORONI_PICO_PLUS2_RP2350
 if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
@@ -765,7 +804,7 @@ if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
 //#if PM_PRINTF
 //         			 PM_INFO("w");
 //#endif
-		             if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
+		             if (!pm_wait_disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
 
 					 PM_EnableSD();  	// Re enable SD
 				   }
