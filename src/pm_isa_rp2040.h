@@ -41,7 +41,17 @@ uint32_t  ISA_Addr;
 uint8_t   ISA_Data;
 
 // Send the value to use to return the fake Address (Address where the is a ROM or no IO)
- pio_sm_put(isa_pio, isa_bus_sm, 0x0FFFFF0F0);  // If 0x0FFFFF0FF, Floppy access (DMA) Crash
+ // os8088-pm114: A10 SET in the stand-in address. The PIO hands a cycle taken
+ // while AEN is high (a DMA cycle) back as the real A0-A7 under these 12 bits
+ // as A8-A19, and the I/O decode indexes IO_Index_T with A3-A10. With A10
+ // clear (0x0F0) that index is the DMA cycle's own low address byte, so a
+ // transfer over xx00-xx0F or xx80-xx8F was taken as CPU writes to the 8237's
+ // address, count and page registers - its data the address byte - and the
+ // Sound Blaster copied from the wrong place (os8088 docs/FIELD-NOTES.md 66).
+ // With A10 set (0x0F4: the 12 bits are A8-A19, so bit 2 is A10) the index
+ // is 128-159, ports 400h-4FFh, which nothing maps.
+ // A13-A19, which the memory decode reads, are unchanged.
+ pio_sm_put(isa_pio, isa_bus_sm, 0x0FFFFF0F4);  // If 0x0FFFFF0FF, Floppy access (DMA) Crash
 
 for (;;) {
 
