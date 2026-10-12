@@ -9,6 +9,7 @@
 #include "dev_memory.h"
 #include "dev_audiomix.h"
 #include "isa_dma.h"
+#include "../pm_ahealth.h"   // os8088-pm114
 #include "isa_irq.h"
 
 #if USE_HWDMA
@@ -25,6 +26,9 @@ uint32_t DMA_IRQ_Sent;   // To count the NB of DMA IRQ sent and acknowledge (For
 uint32_t DMA_IRQ_Acked;
 
 uint64_t DMA_IRQ_AckTime;
+#if OS88_DIAG
+uint64_t ah_copy_req;     // os8088-pm114: when the last copy was asked (pm_ahealth.h)
+#endif
 uint64_t DMA_Start_Time;
 
 #define DMA_IRQ_START_WAIT 500 // Need 500us between the Ack and next Request
@@ -142,8 +146,12 @@ if (DMA_IRQ_Sent!=DMA_IRQ_Acked) { // If the previous DMA Copy command was not a
    // DMA Channel
    PM_DP_RAM[OFFS_IRQ_PARAM+14]=channel;
 
+#if OS88_DIAG
+   ah_copy_req=time_us_64();                     // os8088-pm114
+#endif
    isa_pm_irq_raise(IRQ_R_DMACOPY,1,force_irq);  // Send a DMA Copy interrupt request
    DMA_IRQ_Sent++;
+   ah_inc(AH_COPIES);                            // os8088-pm114
 //   PM_INFO("S%dA%d",DMA_IRQ_Sent, DMA_IRQ_Acked);
 }
 
@@ -207,7 +215,8 @@ void isa_dma_transfer(uint8_t channel)
 
 
   // Minimum size to transfer is DMA_BLOC_SIZE/2
-  isa_dma.to_transfer = (isa_dma.dma_remain<(DMA_BLOC_SIZE+DMA_BLOC_SIZE/2)) ? isa_dma.dma_remain : DMA_BLOC_SIZE;
+  uint32_t bloc = OS88_STOCK() ? DMA_BLOC_STOCK : DMA_BLOC_SIZE;   // os8088-pm114: the A/B
+  isa_dma.to_transfer = (isa_dma.dma_remain<(bloc+bloc/2)) ? isa_dma.dma_remain : bloc;
 
   uint32_t DMA_Buffer_Addr=((uint32_t) PM_BIOSADDRESS<<4)+16*1024+PM_DMAB_Offset;    // "Dual Port RAM" is at BIOS Address + 16Kb
 //  PM_INFO("DMA> TX %x>%x r%d tt%d \n",isa_dma.dma_c_adress, DMA_Buffer_Addr, isa_dma.dma_remain, isa_dma.to_transfer);

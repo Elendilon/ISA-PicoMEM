@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #define ISA_DBG_IO 0
 
+#include "pm_ahealth.h"   // os8088-pm114
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
@@ -329,6 +330,16 @@ __force_inline void PM_BASE_DEV_Init()
  #endif
 
 PM_DP_RAM[0] = 0x12; //ID of The PicoMEM BIOS RAM  (Magic ID)
+
+#if OS88_DIAG
+// os8088-pm114: the DMA-port write log's header (pm_defines.h, DMADBG_)
+for (int i = 0; i < 16; i++) PM_DP_RAM[DMADBG_OFFS + i] = 0;
+{ const char *sig = "DMALOG2";
+  for (int i = 0; i < 8; i++) PM_DP_RAM[DMADBG_OFFS + i] = (uint8_t) sig[i]; }
+PM_DP_RAM[DMADBG_NSB] = DMADBG_NS;
+PM_DP_RAM[DMADBG_ESZB] = DMADBG_ESZ;
+#endif
+ah_init();               // os8088-pm114: the audio health record (pm_ahealth.h)
 
 } //PM_BASE_DEV_Init
 #endif // !BOARD_WM10

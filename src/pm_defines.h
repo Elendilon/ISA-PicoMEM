@@ -210,6 +210,41 @@ If not, see <https://www.gnu.org/licenses/>.
 #define OFFS_IRQ_PARAM   IRQ_VAR_OFFS+14      // Offset of the IRQ Parameter structure (12 bytes)
 #define OFFS_PCCMDPARAM  PCCMD_OFFS+36
 
+// os8088-pm114: the DMA-port WRITE LOG, version 2 (os8088's tests/pmdma reads
+// it at the BIOS segment : 4000h + DMADBG_OFFS). Every IOW the card takes as a
+// DMA register write is logged: the port it decoded, the data byte read the
+// stock way (EARLY: one nop after the PIO flips the multiplexer to data), the
+// raw address word the PIO latched (A19-A0 << 12, so a cycle that was really
+// a memory fetch shows its high address bits), and DMADBG_NS samples of GPIO
+// 8-22 taken back to back from then on - the data byte, and the command,
+// multiplexer and IOCHRDY lines - so the log is a TIMELINE of the cycle.
+// Version 1's single read ~1 us later saw the next cycles' addresses, so the
+// card does not hold the bus as long as the code assumes. DMADBG_MODE picks
+// what dev_dma_iow is given: 0 the early byte (stock), k = sample k-1.
+// 7K..8K of the 8K block is free: the DMA copy buffer at 6K never holds more
+// than ~191 bytes.
+#define DMADBG_OFFS   0x1C00
+#define DMADBG_MODE   (DMADBG_OFFS+8)    // 0 = the early read (stock), k = sample k-1
+#define DMADBG_PUMPOFF (DMADBG_OFFS+9)   // nonzero: the disk loop does NOT pump the
+                                         // Sound Blaster (bios_disk.cpp; the A/B)
+#if OS88_DIAG
+#define OS88_PUMPOFF() (PM_DP_RAM[DMADBG_PUMPOFF] != 0)
+#else
+#define OS88_PUMPOFF() 0                 // the switch is a field diagnostic
+#endif
+#define DMADBG_IDX    (DMADBG_OFFS+10)   // word: writes logged, ever (wraps)
+#define DMADBG_TICKS  (DMADBG_OFFS+12)   // word: cycles the last sampling took
+#define DMADBG_NSB    (DMADBG_OFFS+14)   // byte: DMADBG_NS
+#define DMADBG_ESZB   (DMADBG_OFFS+15)   // byte: DMADBG_ESZ
+#define DMADBG_LOG    (DMADBG_OFFS+16)   // DMADBG_N entries of DMADBG_ESZ bytes:
+                                         // port lo, early, seq, port hi,
+                                         // ISA_Addr (4, LE), NS x {data, ctrl}
+#define DMADBG_NS     16
+#define DMADBG_ESZ    (8 + 2 * DMADBG_NS)
+#define DMADBG_N      22                 // 22 x 40 = 880: ends at 1F80h
+#define DMADBG_STEP   20                 // cycles waited between samples (~90 ns a sample)
+#define DMADBG_PIN_AD0 8                 // the bus program's PIN_AD0 (asserted)
+
 #define BV_VARID       PM_DP_RAM[0]  // ID
 #define BV_Test        PM_DP_RAM[1]  // Test
 #define BV_InitCount   PM_DP_RAM[2]  // Nb of time the PicoMEM BIOS Start

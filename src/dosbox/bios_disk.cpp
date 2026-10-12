@@ -17,6 +17,7 @@
 
 // #define HDD_DISPLAY
 
+#include "../pm_site.h"              // os8088-pm114
 #include <stdio.h>
 #include "pico/stdlib.h"
 
@@ -51,7 +52,7 @@ extern pio_spi_inst_t psram_spi;
 void pm_disk_audio_pump()
 {
 #if USE_SBDSP
-  dev_sbdsp_update();
+  if (!OS88_PUMPOFF()) dev_sbdsp_update();   // os8088-pm114: DMADBG_PUMPOFF, the A/B
 #endif
   pm_audio_domix();
 }
@@ -262,8 +263,10 @@ Bit8u imageDisk::Read_AbsoluteSector(Bit32u sectnum, void * data) {
 	Bit32u 	bytenum = sectnum * sector_size;
     uint byteread;
     FRESULT fr;
+	PM_SITE_IN(PMS_FAT);
 	f_lseek(diskimg,bytenum);
 	fr = f_read(diskimg,data,sector_size,&byteread);
+	PM_SITE_OUT();
 	if (FR_OK != fr) 
 	{ 
 	  PM_ERROR("Fail: %d \n",fr);
@@ -291,8 +294,10 @@ Bit8u imageDisk::Write_AbsoluteSector(Bit32u sectnum, void *data) {
     FRESULT fr;
 
 //PM_INFO("fwrite: pos %d - ",bytenum);
+ { PM_SITE_IN(PMS_FAT);
 	f_lseek(diskimg,bytenum);
 	fr = f_write(diskimg,data,sector_size,&bytewrite);
+	PM_SITE_OUT(); }
 	if (FR_OK != fr) 
 	{ 
 	  PM_ERROR("Fail: %d \n",fr);

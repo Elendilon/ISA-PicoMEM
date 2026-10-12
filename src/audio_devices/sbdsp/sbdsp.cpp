@@ -24,6 +24,13 @@ uint32_t PM_DMA_SendTime;
 #include "pm_defines.h"
 #include "pm_audio.h"
 #include "../../pm_libs/isa_dma.h"       // ISA/PC DMA code
+#include "../../pm_ahealth.h"             // os8088-pm114: the audio health record
+#if OS88_DIAG
+extern "C" volatile uint32_t pm_sd_mixes;    // sd_card_spi.c
+extern uint32_t DMA_IRQ_Acked;
+extern uint64_t DMA_IRQ_AckTime;
+extern uint64_t ah_copy_req;               // isa_dma.cpp: when the last copy was asked
+#endif
 #include "../../pm_libs/bus_irq.h"       // ISA/PC IRQ code
 #include "dev_sbdsp.h"
 #include "audio_fifo.h"
@@ -390,6 +397,9 @@ void sbdsp_start_pcm_dma(bool autoinit, uint16_t xfer_size, uint8_t out_mode) {
      sbdsp.dma_rx_width=sbdsp.dma_stereo ? 2 : 1;
      sbdsp.dma_xfer_count = (xfer_size + 1) / sbdsp.dma_rx_width;
      sbdsp.dma_xfer_count_left = sbdsp.dma_xfer_count;
+     ah_put(AH_DSPRATE, sbdsp.sample_rate);       // os8088-pm114: what the DSP took
+     ah_put(AH_DSPBLK, (uint32_t) xfer_size + 1 + (autoinit ? 0x10000 : 0));
+     ah_inc(AH_DSPSTART);
      sbdsp_dma_enable();
     }
 
@@ -1040,15 +1050,17 @@ if ((sbdsp_fifo.samples_received-sbdsp_fifo.samples_sent) < AUDIO_FIFO_START_THR
   if (to_transfer==0) return;
   if (to_transfer==1)
        {
-        afifo_add_sample8(&sbdsp_fifo,isa_dma_buffer_get());
+        if (!afifo_add_sample8(&sbdsp_fifo,isa_dma_buffer_get())) ah_inc(AH_DROP);  // os8088-pm114
         sbdsp.vdma_sent++;
        } else
        {
         to_transfer = MIN(isa_dma.buffer_level,samples); // Get the number of bytes to transfer to the Audio fifo
 
-        afifo_add_samples8(&sbdsp_fifo, isa_dma_buffer_get_ptr(to_transfer), to_transfer);
+        if (!afifo_add_samples8(&sbdsp_fifo, isa_dma_buffer_get_ptr(to_transfer), to_transfer))
+            ah_add(AH_DROP, to_transfer);  // os8088-pm114: the whole batch is lost
         sbdsp.vdma_sent+=to_transfer;  // !!! If the else is here, Raptor crack
        }
+  ah_max(AH_FMAX, sbdsp_fifo.samples_received-sbdsp_fifo.samples_sent);  // os8088-pm114
 }
 
 // Worked/Code to call regularly from the main loop
@@ -1066,6 +1078,41 @@ void sbdsp_dma_worker()
         }
 
 #else
+
+#if OS88_DIAG
+  // os8088-pm114: the A/B. AH_STOCK plays with the stock start level
+  sbdsp_fifo.start_thr = OS88_STOCK() ? AUDIO_FIFO_START_THRESHOLD : 1024;
+  { // os8088-pm114: the audio health record (pm_ahealth.h)
+    static uint64_t ah_last;
+    static uint32_t ah_acked;
+    uint64_t now = time_us_64();
+    static uint32_t ah_silbase, ah_sdbase;
+    static uint32_t ah_n;
+    static bool ah_once;
+    if (PM_DP_RAM[AH_RESET] || !ah_once) {
+      ah_once = true;
+      ah_clear(); ah_silbase = pm_audio_starved; pm_audio_starvemax = 0;
+      for (uint32_t i = 0; i < 16; i++) pm_starve_site[i] = 0;
+      pm_starve_last = 0; pm_starve_maxat = 0;
+      ah_sdbase = pm_sd_mixes; }
+    if (!(++ah_n & 63)) {
+      ah_put(AH_SILENT, pm_audio_starved - ah_silbase);
+      ah_put(AH_SILMAX, pm_audio_starvemax);
+      ah_put(AH_SDMIX, pm_sd_mixes - ah_sdbase);
+      for (uint32_t i = 0; i < AH_NSITE; i++) ah_put(AH_SITE + 4*i, pm_starve_site[i]);
+      ah_put(AH_SLAST, pm_starve_last); ah_put(AH_SMAXAT, pm_starve_maxat);
+    }
+    if (sbdsp.vdma_to_send) {
+      ah_inc(AH_WORKN);
+      if (ah_last) ah_max(AH_MAXGAP, (uint32_t) (now - ah_last));
+      ah_max(AH_MAXBACK, sbdsp.vdma_to_send - sbdsp.vdma_sent);
+      if (DMA_IRQ_Acked != ah_acked && DMA_IRQ_AckTime > ah_copy_req)
+        ah_max(AH_MAXCOPY, (uint32_t) (DMA_IRQ_AckTime - ah_copy_req));
+    }
+    ah_acked = DMA_IRQ_Acked;
+    ah_last = sbdsp.vdma_to_send ? now : 0;
+  }
+#endif
 
 #if DBG_PIN_AUDIO
   if (SVAR_IRQ->PM_IRR) DBG_ON_INT_SB();
@@ -1090,7 +1137,10 @@ void sbdsp_dma_worker()
   // A copy is a whole block, so when a transfer stops, the end of the last
   // one is left in the buffer. Drop it once the PC has programmed the DMA
   // again: it is not part of the new transfer.
-  if (isa_dma.buffer_level && dmachregs[sbdsp.dma8].changed) isa_dma_buffer_free();
+  if (isa_dma.buffer_level && dmachregs[sbdsp.dma8].changed) {
+      ah_add(AH_STALE, isa_dma.buffer_level);   // os8088-pm114
+      isa_dma_buffer_free();
+     }
 
   if (sbdsp.vdma_to_send!=sbdsp.vdma_sent) {  // Execute only if there is data to transfer
   DBG_ON_SB_UPD();
@@ -1111,12 +1161,17 @@ void sbdsp_dma_worker()
  //     PM_INFO(">I ");
       DBG_ON_IRQ_SB();
       bus_irq_raise(IRQ_R_AUDIO,sbdsp.irq,true);
+      ah_inc(AH_IRQS);   // os8088-pm114
       sbdsp.vdma_irq_rd++;
       return;
      }
 
 #endif
 }
+
+#if OS88_DIAG
+static bool ah_dry;    // os8088-pm114: inside a dry spell (AH_UNDER)
+#endif
 
 // return an audio buffer by reading from the audio fifo
 void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
@@ -1125,6 +1180,10 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
   uint16_t prev_increment;
   int16_t  fres;
   res8u=sbdsp.prev_sample8u;
+#if OS88_DIAG
+  { uint32_t lvl = sbdsp_fifo.samples_received - sbdsp_fifo.samples_sent;   // os8088-pm114
+    if (sbdsp.vdma_to_send) ah_max(AH_FMAX, lvl); }
+#endif
   /*
  if (sbdsp.mainloop_action==DSP_MLC_SET_TIME_CST)
     {
@@ -1144,9 +1203,15 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
         if (sbdsp.readsample)
              if (!afifo_take_sample8(&sbdsp_fifo, &res8u))
               {
+#if OS88_DIAG
+                 if (sbdsp.dma_enabled && !ah_dry) { ah_inc(AH_UNDER); ah_dry = true; }  // os8088-pm114
+#endif
                  sbdsp.prev_sample8u=0x80;  // If the FIFO is empty, return silence
                 return;
               }
+#if OS88_DIAG
+        ah_dry = false;
+#endif
         fres=(int16_t) ((res8u<<8)+0x8000)/4;  // Convert to 16Bit signed
         prev_increment=sbdsp.increment;
         sbdsp.increment+=sbdsp.sample_step;    // Adjust the DMA buffer to the Output frequency
