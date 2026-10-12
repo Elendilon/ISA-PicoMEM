@@ -25,6 +25,13 @@ uint32_t PM_DMA_SendTime;
 #include "pm_audio.h"
 #include "../../pm_libs/isa_dma.h"       // ISA/PC DMA code
 #include "../../pm_ahealth.h"             // os8088-pm114: the audio health record
+#include <unistd.h>
+extern "C" volatile uint32_t pm_sd_mixes;    // sd_card_spi.c
+extern char __HeapLimit;
+static uint32_t ah_heap_free(void)         // never 0, so it marks "taken"
+{                                          // (the heap's untouched top only)
+  return (uint32_t) (&__HeapLimit - (char *) sbrk(0)) | 1;
+}
 extern uint32_t DMA_IRQ_Acked;
 extern uint64_t DMA_IRQ_AckTime;
 extern uint64_t ah_copy_req;               // isa_dma.cpp: when the last copy was asked
@@ -891,12 +898,13 @@ void sbdsp_dma_worker()
     static uint64_t ah_last;
     static uint32_t ah_acked;
     uint64_t now = time_us_64();
-    static uint32_t ah_silbase;
-    if (PM_DP_RAM[AH_RESET]) {
-      ah_clear(); ah_silbase = pm_audio_starved; pm_audio_starvemax = 0; }
+    static uint32_t ah_silbase, ah_sdbase;
+    if (PM_DP_RAM[AH_RESET] || !ah_get(AH_HEAP)) {
+      ah_clear(); ah_silbase = pm_audio_starved; pm_audio_starvemax = 0;
+      ah_sdbase = pm_sd_mixes; ah_put(AH_HEAP, ah_heap_free()); }
     ah_put(AH_SILENT, pm_audio_starved - ah_silbase);
     ah_put(AH_SILMAX, pm_audio_starvemax);
-    ah_put(AH_QBUF, pm_audio_nbuf);
+    ah_put(AH_SDMIX, pm_sd_mixes - ah_sdbase);
     // The cushion: the FIFO is filled just in time off the sample timer, so
     // the only sound held in hand is what it waits for before it starts.
     sbdsp_fifo.start_thr = PM_DP_RAM[AH_STOCK] ? AUDIO_FIFO_START_THRESHOLD

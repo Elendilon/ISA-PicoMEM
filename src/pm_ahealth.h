@@ -34,9 +34,10 @@ extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars
                                     // the speaker got SILENCE for: the
                                     // mixer had none ready
 #define AH_SILMAX   (AH_OFFS+56)    // the longest run of them
-#define AH_QBUF     (AH_OFFS+60)    // the output pool's buffers (48 wanted;
-                                    // 24, 12 or 5 when the heap was short)
-#define AH_END      (AH_OFFS+64)
+#define AH_SDMIX    (AH_OFFS+60)    // mixes run inside the SD driver's waits
+#define AH_HEAP     (AH_OFFS+64)    // heap never yet handed out, bytes, at
+                                    // the last reset (holes not counted)
+#define AH_END      (AH_OFFS+68)
 #if AH_STOCK != 0x1F85
 #error "pm_audio.h reads AH_STOCK as 0x1F85"
 #endif

@@ -603,7 +603,9 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 					 return CBRET_NONE;
 		    		}
                 // ** Ask the BIOS to Copy the data to the application buffer (in Background)
-		
+		        // os8088-pm114: the previous sector's copy is waited for HERE, with the
+		        // audio pumped - PC_MemCopyW_512b's own wait (up to 20 ms) pumps nothing
+		        if (!pm_wait_disk()) return CBRET_NONE;
                 PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
           		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
 
