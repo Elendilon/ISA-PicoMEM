@@ -11,6 +11,7 @@
 #define PM_DMAB_Offset 6*1024
 #define PM_DMAB_Size   1024  // 2*1024 max
 #define DMA_BLOC_SIZE 512    // Size of the DMA transfer block (Max transfer is 1.5x, must fit PM_DMAB_Size)
+#define DMA_BLOC_STOCK 128   // os8088-pm114: the block with AH_STOCK set (the A/B)
 
 // Real DMA definitions
 #define DMA_PIO pio0
