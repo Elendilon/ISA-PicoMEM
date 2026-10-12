@@ -892,6 +892,10 @@ void sbdsp_dma_worker()
     static uint32_t ah_acked;
     uint64_t now = time_us_64();
     if (PM_DP_RAM[AH_RESET]) ah_clear();
+    // The cushion: the FIFO is filled just in time off the sample timer, so
+    // the only sound held in hand is what it waits for before it starts.
+    sbdsp_fifo.start_thr = PM_DP_RAM[AH_STOCK] ? AUDIO_FIFO_START_THRESHOLD
+                                               : SBDSP_FIFO_START_BIG;
     if (sbdsp.vdma_to_send) {
       ah_inc(AH_WORKN);
       if (ah_last) ah_max(AH_MAXGAP, (uint32_t) (now - ah_last));
@@ -931,6 +935,14 @@ void sbdsp_dma_worker()
 
   DBG_OFF_SB_UPD();
  }
+
+  // os8088-pm114: a sound SHORTER than the start level would wait in the
+  // FIFO for the next one (stock had this at 512; 1,024 makes it common), so
+  // once the DMA has stopped and everything due is in, play what is there.
+  if (!sbdsp.dma_enabled && sbdsp.vdma_to_send==sbdsp.vdma_sent &&
+      sbdsp_fifo.state==FIFO_STATE_STOPPED &&
+      sbdsp_fifo.samples_received!=sbdsp_fifo.samples_sent)
+      sbdsp_fifo.state=FIFO_STATE_RUNNING;
 
 if (sbdsp.mainloop_action==DSP_MLC_SENDIRQ) {  // Perform the reset here, to not change the variable in the middle of the worker execution
  //     PM_INFO(">I ");

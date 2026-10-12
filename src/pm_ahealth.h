@@ -10,8 +10,13 @@
 extern volatile uint8_t PM_DP_RAM[];   // unsized: fits picomem.cpp and pm_gvars.h
 
 #define AH_OFFS     0x1F80          // past the DMA write log (ends 1F80h)
-#define AH_SIG      (AH_OFFS+0)     // 'AH01'
+#define AH_SIG      (AH_OFFS+0)     // 'AH02' ('AH01' had no AH_STOCK)
 #define AH_RESET    (AH_OFFS+4)     // byte: the PC writes 1, core 0 clears all
+#define AH_STOCK    (AH_OFFS+5)     // byte: nonzero = the card's STOCK sound
+                                    // path (128-byte copies, a 512-sample
+                                    // FIFO start). 0, the default, is
+                                    // os8088's: 512-byte copies and a 1,024
+                                    // start. The reset leaves it alone
 #define AH_UNDER    (AH_OFFS+8)     // the SB's FIFO found empty by the mixer
 #define AH_MINLVL   (AH_OFFS+12)    // the FIFO's lowest level, samples
 #define AH_MAXBACK  (AH_OFFS+16)    // most samples the timer asked for that
@@ -43,12 +48,14 @@ static inline void ah_max(uint32_t o, uint32_t v) { if (v > ah_get(o)) ah_put(o,
 static inline void ah_min(uint32_t o, uint32_t v) { if (v < ah_get(o)) ah_put(o, v); }
 static inline void ah_clear(void)
 {
-  for (uint32_t o = AH_RESET; o < AH_END; o++) PM_DP_RAM[o] = 0;
+  PM_DP_RAM[AH_RESET] = 0;
+  for (uint32_t o = AH_UNDER; o < AH_END; o++) PM_DP_RAM[o] = 0;
   ah_put(AH_MINLVL, 0xFFFFFFFFu);
 }
 static inline void ah_init(void)
 {
   PM_DP_RAM[AH_SIG] = 'A'; PM_DP_RAM[AH_SIG+1] = 'H';
-  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '1';
+  PM_DP_RAM[AH_SIG+2] = '0'; PM_DP_RAM[AH_SIG+3] = '2';
+  for (uint32_t o = AH_STOCK; o < AH_UNDER; o++) PM_DP_RAM[o] = 0;
   ah_clear();
 }

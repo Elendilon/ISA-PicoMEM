@@ -11,6 +11,11 @@
 #define PM_DMAB_Offset 6*1024
 #define PM_DMAB_Size   1024  // 2*1024 max
 #define DMA_BLOC_SIZE 128    // Size of the DMA transfer block (128 bytes)
+#define DMA_BLOC_BIG  512    // os8088-pm114: the block unless AH_STOCK is set.
+                             // A copy is up to 1.5 blocks, 768 < PM_DMAB_Size
+#if (DMA_BLOC_BIG + DMA_BLOC_BIG/2) > PM_DMAB_Size
+#error "a DMA_BLOC_BIG copy does not fit the PC copy buffer"
+#endif
 
 // Real DMA definitions
 #define DMA_PIO pio0

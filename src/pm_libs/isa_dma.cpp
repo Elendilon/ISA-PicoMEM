@@ -211,7 +211,12 @@ void isa_dma_transfer(uint8_t channel)
 
 
   // Minimum size to transfer is DMA_BLOC_SIZE/2
-  isa_dma.to_transfer = (isa_dma.dma_remain<(DMA_BLOC_SIZE+DMA_BLOC_SIZE/2)) ? isa_dma.dma_remain : DMA_BLOC_SIZE;
+  // os8088-pm114: a copy is one PC round trip through the PM IRQ, and at
+  // 128 bytes that trip is ~11 ms of 11 kHz sound - so while the PC is busy
+  // in the card's own int 13h the supply barely matches the play rate and
+  // the FIFO never holds its cushion. 512 brings four times as much a trip.
+  uint32_t bloc = PM_DP_RAM[AH_STOCK] ? DMA_BLOC_SIZE : DMA_BLOC_BIG;
+  isa_dma.to_transfer = (isa_dma.dma_remain<(bloc+bloc/2)) ? isa_dma.dma_remain : bloc;
 
   uint32_t DMA_Buffer_Addr=((uint32_t) PM_BIOSADDRESS<<4)+16*1024+PM_DMAB_Offset;    // "Dual Port RAM" is at BIOS Address + 16Kb
 //  PM_INFO("DMA> TX %x>%x r%d tt%d \n",isa_dma.dma_c_adress, DMA_Buffer_Addr, isa_dma.dma_remain, isa_dma.to_transfer);

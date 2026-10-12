@@ -12,9 +12,14 @@
 // #include "pico/sem.h"
 
 // Configuration
-#define AUDIO_FIFO_SIZE 1024  // Must be power of 2
+// os8088-pm114: 2048, was 1024, so a mono FIFO can START at 1,024 samples -
+// 93 ms at 11 kHz, which rides out the ~42 ms the SB worker waits on an SD
+// read. The start level is per FIFO now (start_thr); everything but the
+// Sound Blaster keeps the stock 512, and so does it with AH_STOCK set.
+#define AUDIO_FIFO_SIZE 2048  // Must be power of 2
 #define AUDIO_FIFO_BITS (AUDIO_FIFO_SIZE - 1)
-#define AUDIO_FIFO_START_THRESHOLD (AUDIO_FIFO_SIZE >> 1)  // Start playback when half full
+#define AUDIO_FIFO_START_THRESHOLD 512  // the stock start (was SIZE/2 at 1024)
+#define SBDSP_FIFO_START_BIG 1024       // the Sound Blaster's, unless AH_STOCK
 //#define AUDIO_FIFO_START_THRESHOLD 5
 
 #ifdef __cplusplus
@@ -41,6 +46,7 @@ typedef struct {
     volatile uint32_t samples_in_fifo;
     volatile uint32_t samples_received;
     volatile uint32_t samples_sent;    
+    volatile uint32_t start_thr;   // os8088-pm114: level that starts play
 } audio_fifo_8_t;
 
 // 8Bit Stereo FIFO structure
