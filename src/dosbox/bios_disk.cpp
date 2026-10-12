@@ -18,6 +18,42 @@
 // #define HDD_DISPLAY
 
 #include "../pm_site.h"              // os8088-pm114
+#include "../pm_ahealth.h"           // os8088-pm114: the disk read record (DK_)
+#if OS88_DIAG
+// os8088-pm114: what the current read spent on the SD card and waiting for the PC
+static uint32_t dk_sd_us, dk_wait_us;
+#define DK_SD_T0()  uint32_t dk_t0 = time_us_32()
+#define DK_SD_ADD() (dk_sd_us += time_us_32() - dk_t0)
+#define DK_WAIT(call) ({ uint32_t dk_tw = time_us_32(); bool dk_r = (call); \
+                         dk_wait_us += time_us_32() - dk_tw; dk_r; })
+static uint32_t dk_call_t0;
+static inline void dk_begin(void)
+{
+  if (PM_DP_RAM[DK_RESET]) dk_clear();
+  dk_sd_us = 0; dk_wait_us = 0; dk_call_t0 = time_us_32();
+}
+static inline void dk_end(uint32_t sect, bool multi)
+{
+  ah_inc(DK_CALLS);
+  ah_add(DK_SECT, sect);
+  if (multi) ah_add(DK_MULTI, sect);
+  ah_add(DK_SDUS, dk_sd_us);
+  ah_add(DK_WAITUS, dk_wait_us);
+  ah_add(DK_CALLUS, time_us_32() - dk_call_t0);
+  uint32_t n = ah_get(DK_SECT);
+  if (n) {
+    ah_put(DK_SDPS, ah_get(DK_SDUS) / n);
+    ah_put(DK_WAITPS, ah_get(DK_WAITUS) / n);
+    ah_put(DK_CALLPS, ah_get(DK_CALLUS) / n);
+  }
+}
+#else
+#define DK_SD_T0()     ((void) 0)
+#define DK_SD_ADD()    ((void) 0)
+#define DK_WAIT(call)  (call)
+#define dk_begin()     ((void) 0)
+#define dk_end(s, m)   ((void) 0)
+#endif
 #include <stdio.h>
 #include "pico/stdlib.h"
 
@@ -249,8 +285,10 @@ Bit8u imageDisk::Read_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * da
 Bit8u imageDisk::Read_AbsoluteSectors(Bit32u sectnum, Bit32u count, void * data) {
 	uint byteread;
 	FRESULT fr;
+	DK_SD_T0();
 	f_lseek(diskimg,sectnum * sector_size);
 	fr = f_read(diskimg,data,count * sector_size,&byteread);
+	DK_SD_ADD();
 	if ((FR_OK != fr) || (byteread != count * sector_size))
 	{
 	  PM_ERROR("Fail: %d \n",fr);
@@ -264,8 +302,10 @@ Bit8u imageDisk::Read_AbsoluteSector(Bit32u sectnum, void * data) {
     uint byteread;
     FRESULT fr;
 	PM_SITE_IN(PMS_FAT);
+	DK_SD_T0();
 	f_lseek(diskimg,bytenum);
 	fr = f_read(diskimg,data,sector_size,&byteread);
+	DK_SD_ADD();
 	PM_SITE_OUT();
 	if (FR_OK != fr) 
 	{ 
@@ -473,7 +513,7 @@ static uint16_t disk_read_runs(Bitu drivenum, uint32_t lba, uint32_t count, uint
   for (;;)
    {
     // The transfer buffer is free when the previous copy is completed
-    if (!PC_Wait_CMD_End_Disk()) return 0xFFFF;
+    if (!DK_WAIT(PC_Wait_CMD_End_Disk())) return 0xFFFF;
     memcpy((void *)PM_PTR_DISKBUFFER,disk_run_buf,n*512);
     __compiler_memory_barrier();
     if (!PC_MemCopyW_Disk(PC_DB_Start,dest,n*256)) return 0xFFFF;
@@ -495,7 +535,7 @@ static uint16_t disk_read_runs(Bitu drivenum, uint32_t lba, uint32_t count, uint
       }
    }
 
-  if (!PC_Wait_CMD_End_Disk()) return 0xFFFF; // Wait until the PC finish the last copy
+  if (!DK_WAIT(PC_Wait_CMD_End_Disk())) return 0xFFFF; // Wait until the PC finish the last copy
   return 0;
 }
 
@@ -591,7 +631,8 @@ Only Last Status 0,1 and 7 are used */
 
 #endif
 
-        if (disk_in_pc_ram(PCBuffer_Start,reg_al*512))
+        dk_begin();
+        if (!OS88_DISKSTOCK() && disk_in_pc_ram(PCBuffer_Start,reg_al*512))
          {
           uint16_t st=disk_read_runs(drivenum,sect_lba,reg_al,PCBuffer_Start);
           if (st==0xFFFF) return CBRET_NONE;
@@ -602,6 +643,7 @@ Only Last Status 0,1 and 7 are used */
              reg_SetCF();
              return CBRET_NONE;
             }
+          dk_end(reg_al, true);
           reg_ah = 0x00;
           reg_ClearCF();
           break;
@@ -663,7 +705,7 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 		    		}
                 // ** Ask the BIOS to Copy the data to the application buffer (in Background)
 		
-                PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
+                DK_WAIT(PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start));
           		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
 
 				pm_disk_audio_pump();   // Insert Audio Mix during the wait time
@@ -745,11 +787,11 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 		    		}
 
 				PM_PICO_EnablePSRAM();
-				PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
+				DK_WAIT(PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start));
 
 				pm_disk_audio_pump();   // Insert Audio Mix during the wait time
 
-		        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
+		        if (!DK_WAIT(PC_Wait_CMD_End_Disk())) return CBRET_NONE; // Wait until the PC finish a sector copy
 				PM_EnableSD();
 			   break;
 		    } //End switch(mt_beg)
@@ -762,8 +804,9 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 #endif
 		 }  // End For (Read Loop)
 
-		 if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
+		 if (!DK_WAIT(PC_Wait_CMD_End_Disk())) return CBRET_NONE; // Wait until the PC finish a sector copy
 
+		dk_end(reg_al, false);
 		reg_ah = 0x00;
 		reg_ClearCF();
 		break;

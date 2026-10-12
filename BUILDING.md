@@ -206,7 +206,9 @@ drift. os8088 `docs/FIELD-NOTES.md` 66 is the field record behind each fix:
 
 `OS88_DIAG` (CMake cache variable, default 0) builds in what measured them:
 the DMA-port write log at BIOS+5C00h, the Sound Blaster's audio health
-record at BIOS+5F80h ('AH08'), the silence-by-site counters, and the two
+record at BIOS+5F80h ('AH08'), the disk read record at BIOS+5BC0h ('DK01':
+SD time, PC-copy wait and call time, a sector, with a byte at +4 that puts
+reads back on the stock sector loop), the silence-by-site counters, and the two
 PC-side switches os8088's `tests/pmdma` flips - BIOS+5C09h (no SB worker in
 the disk loop) and BIOS+5F85h (the stock 128-byte copies, 512-sample start
 and no waits pumped). With it off none of that RAM is read or written and
