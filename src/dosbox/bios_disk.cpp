@@ -492,6 +492,9 @@ static bool driveInactive(Bitu driveNum) {
 // The sectors are read DISK_RUN at a time in a Pico buffer, while the PC copies
 // the previous ones from the BIOS RAM transfer buffer (2Kb at 4Kb).
 // A run is one SD command instead of one per sector, and one PC copy command.
+// The first runs are 1 then 2 sectors : the first read is the only one the PC
+// waits for, and a run of n is read during the copy of n/2 (The copy is the
+// longest : ~650us a sector on a 16MHz 286, against ~270us to read one).
 #define DISK_RUN 4
 static uint8_t disk_run_buf[DISK_RUN*512];
 
@@ -506,7 +509,8 @@ static bool disk_in_pc_ram(uint32_t start, uint32_t len)
 // Return 0 if Ok, the BIOS error code, or 0xFFFF if the PC did not answer (Nothing to return)
 static uint16_t disk_read_runs(Bitu drivenum, uint32_t lba, uint32_t count, uint32_t dest)
 {
-  uint32_t n=(count<DISK_RUN) ? count : DISK_RUN;
+  uint32_t run=1;
+  uint32_t n=1;
   uint8_t st=imageDiskList[drivenum]->Read_AbsoluteSectors(lba,n,disk_run_buf);
   if ((st!=0) || killRead) { killRead=false; return st ? st : 0x04; }
 
@@ -525,7 +529,8 @@ static uint16_t disk_read_runs(Bitu drivenum, uint32_t lba, uint32_t count, uint
     if (count==0) break;
 
     // Read the next run while the PC copies this one
-    n=(count<DISK_RUN) ? count : DISK_RUN;
+    if (run<DISK_RUN) run<<=1;
+    n=(count<run) ? count : run;
     st=imageDiskList[drivenum]->Read_AbsoluteSectors(lba,n,disk_run_buf);
     if ((st!=0) || killRead)
       {
