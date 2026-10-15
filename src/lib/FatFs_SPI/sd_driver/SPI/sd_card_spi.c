@@ -194,18 +194,21 @@
 void pm_audio_domix();
 
 // os8088-pm114: the waits mix unless the byte at BIOS:5F85 (AH_STOCK,
-// pm_ahealth.h) asks for stock, and are counted (AH_SDMIX)
+// pm_ahealth.h) asks for stock, and are counted (AH_SDMIX). With OS88_DIAG
+// off it is the bare call pm1x-sb-fixes makes, as a macro and not an inline
+// function: the wrapper alone moved GCC's code for sd_card_spi_init, so the
+// knob-off build was not the PR branch's byte for byte.
 #if OS88_DIAG
 volatile uint32_t pm_sd_mixes;
-#endif
 static inline void sd_wait_mix(void) {
     if (!OS88_STOCK()) {
-#if OS88_DIAG
         pm_sd_mixes++;
-#endif
         pm_audio_domix();
     }
 }
+#else
+#define sd_wait_mix() pm_audio_domix()
+#endif
 
 #if defined(NDEBUG) || !USE_DBG_PRINTF
 #  pragma GCC diagnostic ignored "-Wunused-function"
