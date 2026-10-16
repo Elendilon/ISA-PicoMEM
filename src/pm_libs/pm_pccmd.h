@@ -94,21 +94,18 @@ extern void PC_MemCopy(uint32_t Src, uint32_t Dest, uint16_t Size); // Copy xx B
 extern bool PC_MemCopyW_512b(uint32_t Src, uint32_t Dest);          // Copy 512 Bytes from Src to Dest Address  (PC RAM @)
 extern bool PC_MemCopyW_Disk(uint32_t Src, uint32_t Dest, uint16_t Len); // Same, Len words
 
+// Wait for the PC to end its disk copy command.
+// The PC copies with its interrupts enabled (PM_Int13h's STI), so any interrupt
+// handler can hold it for as long as it likes - a video player decoding a frame
+// from IRQ0, for one, holds it for whole timer periods. That is a slow PC, not a
+// dead one. This used to give up after 20ms + 100ms, and every caller then went
+// on without the copy: the multi sector read returned with CF as the PC passed
+// it (clear) and the end of the buffer never written, the sector loops skipped
+// the sector (PC_MemCopyW_512b's result is not tested). Wrong data with no error.
+// The only way out is a PC reset, as for PC_End, which never had a timeout.
 __force_inline bool PC_Wait_CMD_End_Disk()
 {
-  if (!PC_Wait_CMD_End_Timeout(20000))
-    {
-     //PM_ERROR("PC_MemCopyW_512b: Timeout 20ms (%x)\n",PCCR_PCSTATE);      
-     PM_ERROR("PC_MemCopyW_512b: Timeout 20ms\n"); 
-     if (!PC_Wait_CMD_End_Timeout(100000)) { 
-       //PM_ERROR("PC_MemCopyW_512b: Timeout 100ms (%x)\n",PCCR_PCSTATE);
-       PM_ERROR("PC_MemCopyW_512b: Timeout 100ms\n");       
-       return false;
-      }
-    }
-
-  // if (!PC_Wait_CMD_End()) return false;    
-  return true;
+  return PC_Wait_CMD_End();
 }
 
 
