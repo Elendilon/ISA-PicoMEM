@@ -513,6 +513,8 @@ bool PM_RTC_OnOff(uint8_t state)
 // *************************************************************
 // *****      PicoMEM Commands Run from the 2nd core       *****
 // *************************************************************
+extern void pm_disk_audio_pump();
+
 void PM_ExecCMD()
 {
 
@@ -1319,6 +1321,7 @@ void PM_ExecCMD()
      if (PM_EnableSD()) 
       {
         if (PM_Int13h_LEDCount++==3) pm_led(1);  // Don't blink the LED all the time
+        pm_pccmd_wait_hook=pm_disk_audio_pump;  // Keep the audio running while waiting for the PC
         INT13_DiskHandler();        
       }
        else
@@ -1330,6 +1333,7 @@ void PM_ExecCMD()
 
      PM_PICO_EnablePSRAM();   // Re enable the PSRAM for the Memory emulation
 	   PC_End();                // Tell the PC Command loop to end
+     pm_pccmd_wait_hook=NULL;
   
      if (PM_Int13h_LEDCount==6) {
         pm_led(0);
@@ -2137,6 +2141,8 @@ BV_PCCMD_SOURCE=0;      // Reset the PCCMD_FLAG
 BV_SPIPSRAM=0;          // Reset the SPI PSRAM Flag
 BV_Int13hCLI=0;
 BV_BoardID=BOARD_ID;    // Set the Board ID
+BV_FW_Rev=0x88;         // Firmware revision, returned in BX by the BIOS function 3 : 8088h,
+BV_FW_Rev_H=0x80;       // the audio is mixed while the disk access waits for the PC
 PM_Status=STAT_READY;   // PicoMEM Initialisation completed (The BIOS Wait for its end)
 PM_Init_Completed=true;
 

@@ -50,6 +50,9 @@ typedef struct sbdsp_t {
   //  volatile bool vdma_flushdata;    // Force the Samples copy from DMA to the FIFO
     uint32_t vdma_to_send;           // Count of bytes to transfer for the Virtual DMA
     uint32_t vdma_sent;              // Different variable, one for the main loop, one for the IRQ to avoid conflict
+    volatile uint32_t vdma_irq_at[8];  // vdma_sent value at the end of each block waiting for its IRQ
+    volatile uint8_t vdma_irq_wr;      // Written by the DMA timer
+    volatile uint8_t vdma_irq_rd;      // Read by the main loop
 
     uint16_t dac_interval;           // Interval (in uS) between 2 samples is sent to the DAC
     int32_t timer_delta;             // Timer delta for the DAC timer event

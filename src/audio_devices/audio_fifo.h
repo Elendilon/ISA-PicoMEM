@@ -12,9 +12,9 @@
 // #include "pico/sem.h"
 
 // Configuration
-#define AUDIO_FIFO_SIZE 1024  // Must be power of 2
+#define AUDIO_FIFO_SIZE 2048  // Must be power of 2
 #define AUDIO_FIFO_BITS (AUDIO_FIFO_SIZE - 1)
-#define AUDIO_FIFO_START_THRESHOLD (AUDIO_FIFO_SIZE >> 1)  // Start playback when half full
+#define AUDIO_FIFO_START_THRESHOLD 512  // Default level to start the playback (start_thr)
 //#define AUDIO_FIFO_START_THRESHOLD 5
 
 #ifdef __cplusplus
@@ -41,6 +41,7 @@ typedef struct {
     volatile uint32_t samples_in_fifo;
     volatile uint32_t samples_received;
     volatile uint32_t samples_sent;    
+    uint32_t start_thr;              // Start playback when this level is reached
 } audio_fifo_8_t;
 
 // 8Bit Stereo FIFO structure

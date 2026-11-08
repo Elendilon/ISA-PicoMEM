@@ -317,6 +317,7 @@ else()  # PicoMEM Boards < 1.5
 
 # 270 Min for the 5150
         PM_SYS_CLK=280    # Possible values : 130,133,160,170,...,240,260,270,280
+        CYW43_PIO_CLOCK_DIV_INT=4  # For the Wifi Chip PIO clock : 2 for 133MHz
 
         MAX_PMRAM=8             # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
 

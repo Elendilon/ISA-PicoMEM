@@ -370,6 +370,7 @@ static bool sd_wait_ready(sd_card_t *sd_card_p, uint32_t timeout) {
     uint32_t start = millis();
     do {
         resp = sd_spi_write_read(sd_card_p, 0xFF);
+        if (resp != 0xFF) pm_audio_domix();  // PICOMEM: Mix during the wait
     } while (resp != 0xFF && millis() - start < timeout);
     /* Checking for 0xFF provides a little extra margin to 
     make sure that DO has gone high and stayed there.
@@ -754,6 +755,7 @@ static bool sd_wait_token(sd_card_t *sd_card_p, uint8_t token) {
         if (token == sd_spi_read(sd_card_p)) {
             return true;
         }
+        pm_audio_domix();  // PICOMEM: Mix during the wait
     } while (millis() - start < sd_timeouts.sd_command);
 
     DBG_PRINTF("sd_wait_token: timeout\n");

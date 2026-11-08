@@ -109,6 +109,7 @@ public:
 	Bit8u Read_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * data);
 	Bit8u Write_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * data);
 	Bit8u Read_AbsoluteSector(Bit32u sectnum, void * data);
+	Bit8u Read_AbsoluteSectors(Bit32u sectnum, Bit32u count, void * data);
 	Bit8u Write_AbsoluteSector(Bit32u sectnum, void * data);
 
 	void Set_Geometry(Bit32u setHeads, Bit32u setCyl, Bit32u setSect, Bit32u setSectSize);

@@ -46,6 +46,7 @@ void afifo_init8(audio_fifo_8_t *fifo) {
 //    fifo->samples_in_fifo = 0;
     fifo->samples_received = 0;
     fifo->samples_sent = 0;
+    fifo->start_thr = AUDIO_FIFO_START_THRESHOLD;
 #if AUDIO_SINE
     PM_INFO ("Generate Sine Wave: ");
     for (int i = 0; i < SINE_WAVE_TABLE_LEN; i++) {
@@ -89,7 +90,7 @@ bool afifo_add_sample8(audio_fifo_8_t *fifo, int8_t sample) {
     fifo->write_idx = (fifo->write_idx + 1) & (AUDIO_FIFO_BITS);
     fifo->samples_received++;  
 
-    if ((fifo->samples_received-fifo->samples_sent) == AUDIO_FIFO_START_THRESHOLD) {
+    if ((fifo->samples_received-fifo->samples_sent) >= fifo->start_thr) {
         if (fifo->state == FIFO_STATE_STOPPED) PM_INFO("Start FIFO\n");
         fifo->state = FIFO_STATE_RUNNING;
     }
@@ -133,7 +134,7 @@ bool afifo_add_samples8(audio_fifo_8_t *fifo, const int8_t *samples_buffer, uint
     fifo->write_idx = (fifo->write_idx + num_samples_to_add) & (AUDIO_FIFO_BITS);
     fifo->samples_received += num_samples_to_add;
 
-    if ((fifo->samples_received-fifo->samples_sent) >= AUDIO_FIFO_START_THRESHOLD) {        
+    if ((fifo->samples_received-fifo->samples_sent) >= fifo->start_thr) {        
         if (fifo->state == FIFO_STATE_STOPPED) PM_INFO("Start FIFO\n");
         fifo->state = FIFO_STATE_RUNNING;
     }
