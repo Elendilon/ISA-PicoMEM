@@ -47,7 +47,10 @@ set(PICO_BOARD pimoroni_pico_plus2_rp2350 CACHE STRING "Board type")
 #set(PICOMEM_BOARD "PICOMEM_LP")
 #set(PICOMEM_BOARD "PICOMEM_13")
 #set(PICOMEM_BOARD "PICOMEM_15")
-set(PICOMEM_BOARD "PICOMEM_20")
+# A CACHE variable, as PICO_BOARD is, so this tree builds either card unedited:
+#   2.0 (default): -DPICO_BOARD=pimoroni_pico_plus2_rp2350 -DPICOMEM_BOARD=PICOMEM_20
+#   1.x:           -DPICO_BOARD=pico_w -DPICOMEM_BOARD=PICOMEM   (firmware/picomem1's v1board.patch, as flags)
+set(PICOMEM_BOARD "PICOMEM_20" CACHE STRING "PicoMEM board")
 #set(PICOMEM_BOARD "WONDERMCA_10")
 
 # ** UART (Debug) and USB Host definition **
@@ -81,6 +84,11 @@ endif()
 pico_sdk_init()
   
 ####### Add the Sub directories containing libraries  ########
+
+# os8088 PICOMEM2-DMA-DISK-PLAN wave 0: the DMA-to-PC probe (pm_libs/pm2dma_probe.h).
+# OFF: nothing of it is compiled. A 2.0 test image only, never a release.
+set(PM2DMA_PROBE 0 CACHE STRING "PicoMEM 2 DMA-to-PC probe (0/1)")
+add_compile_definitions(PM2DMA_PROBE=${PM2DMA_PROBE})
 
 add_subdirectory(lib/FatFs_SPI)
 add_subdirectory(rom)                       # PicoMEM BIOS binary

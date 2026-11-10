@@ -81,6 +81,12 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "picomem.h"
 #include "pm_board.h"       // PicoMEM Board Definitions
 #include "pm_defines.h"     // Shared MEMORY variables defines (Registers and PC Commands)
+#include "pm_libs/pm2dma_probe.h"   // os8088 PICOMEM2-DMA-DISK-PLAN wave 0
+#if PM2DMA_PROBE && BOARD_PM20
+p2d_t p2d;
+static uint32_t p2d_lin;      // the address being assembled by CMD_P2D_ADDR / _SETUP
+static uint32_t p2d_ch;
+#endif
 #include "pm_libs/pm_disk.h"
 #include "pm_libs/pico_rtc.h"
 #include "pm_libs/pm_libs.h"
@@ -1552,6 +1558,52 @@ void PM_ExecCMD()
 
        PM_Status=STAT_READY;
      break;
+
+#if PM2DMA_PROBE && BOARD_PM20
+    case CMD_P2D_ADDR :
+     p2d_lin = (p2d_lin & 0xF0000) | (uint32_t) PM_CmdDataL | ((uint32_t) PM_CmdDataH << 8);
+     PM_Status=STAT_READY;
+     break;
+    case CMD_P2D_SETUP :
+     p2d_lin = (p2d_lin & 0xFFFF) | (((uint32_t) PM_CmdDataL & 0xF) << 16);
+     p2d.mode = PM_CmdDataH & 0x0F;
+     p2d_ch = (PM_CmdDataH >> 4) & 3;
+     PM_Status=STAT_READY;
+     break;
+    case CMD_P2D_GO :
+     {
+      uint32_t n = (uint32_t) PM_CmdDataL | ((uint32_t) PM_CmdDataH << 8);
+      if (n == 0) n = 0x10000;
+      p2d.armed = 0;
+      for (int i = 0; i < P2D_NSTAT; i++) p2d.stat[i] = 0;
+      p2d.stat[P2D_VERSION] = 1;
+      p2d.stat[P2D_SNOOPA] = dmachregs[p2d_ch].baseaddr;
+      p2d.stat[P2D_SNOOPP] = dmachregs[p2d_ch].page;
+      p2d.stat[P2D_SNOOPC] = dmachregs[p2d_ch].basecnt;
+      p2d.stat[P2D_SNOOPM] = (dmachregs[p2d_ch].autoinit ? 1 : 0) | (dmachregs[p2d_ch].mask ? 2 : 0);
+      p2d.start = p2d_lin;
+      p2d.end = p2d_lin + n;
+      p2d.next = p2d_lin;
+      __compiler_memory_barrier();
+      p2d.armed = 1;            // core 1 counts from here
+      p2d_drq(true);
+     }
+     PM_Status=STAT_READY;
+     break;
+    case CMD_P2D_STOP :
+     p2d_drq(false);
+     p2d.armed = 0;
+     PM_Status=STAT_READY;
+     break;
+    case CMD_P2D_STAT :
+     {
+      uint16_t v = (PM_CmdDataL < P2D_NSTAT) ? p2d.stat[PM_CmdDataL] : 0xFFFF;
+      PM_CmdDataL = (uint8_t) v;
+      PM_CmdDataH = (uint8_t) (v >> 8);
+     }
+     PM_Status=STAT_READY;
+     break;
+#endif
 
     case CMD_DMA_TEST :
 #if  USE_HWDMA 

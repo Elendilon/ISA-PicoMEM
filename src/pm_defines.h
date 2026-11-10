@@ -169,6 +169,13 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #define CMD_DMA_TEST       0xAA
 
+// Bx : os8088 PICOMEM2-DMA-DISK-PLAN wave 0, the DMA-to-PC probe (PM2DMA_PROBE=1 builds only)
+#define CMD_P2D_ADDR       0xB0  // DataL/H = the buffer's linear address, bits 0-15
+#define CMD_P2D_SETUP      0xB1  // DataL = bits 16-19 ; DataH = mode (bits 0-3) | channel << 4
+#define CMD_P2D_GO         0xB2  // DataL/H = byte count: clear the counters, arm, raise DRQ
+#define CMD_P2D_STOP       0xB3  // drop DRQ and disarm (the count may not have run out)
+#define CMD_P2D_STAT       0xB4  // DataL = index -> DataL/H = that counter (pm2dma_probe.h)
+
 #define INIT_DONE          0x00
 #define INIT_SKIPPED       0xFC  // Skipped or Error to initialize  ! Hardcoded in the ASM BIOS
 #define INIT_INPROGRESS    0xFD

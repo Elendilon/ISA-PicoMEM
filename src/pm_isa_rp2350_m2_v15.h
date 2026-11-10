@@ -11,6 +11,7 @@
 #endif
 
 #define DO_MEMR 2 
+#include "pm_libs/pm2dma_probe.h"   // os8088 PICOMEM2-DMA-DISK-PLAN wave 0 (PM2DMA_PROBE=1 only)
 #define DO_IOR  1 
 
 __force_inline void pm_do_ior(void)
@@ -32,6 +33,51 @@ __force_inline void pm_do_memr(uint32_t ISA_Data)
  ISA_Data = pio_sm_get_blocking(isa_pio, isa_bus_sm); // Wait that the data is sent to wait for the next ALE 
 }
 
+
+#if PM2DMA_PROBE && BOARD_PM20
+// The probe's bodies live in RAM, not in core 1's 4KB scratch bank (which they
+// overflowed): the hot path keeps only the test of p2d.armed.
+
+// A memory write (nibble 2) while armed. True = served, the cycle is finished.
+static bool __attribute__((noinline)) __not_in_flash_func(p2d_memw)(uint32_t raw, uint32_t nib)
+{
+  uint32_t a = (raw ^ 0x000F00) & 0xFFFFF;
+  p2d.stat[P2D_NIB+(nib&15)]++;
+  if (a < p2d.start || a >= p2d.end) return false;
+  p2d.stat[P2D_MW_IN]++;
+  p2d_note(a, nib);
+  if (a != p2d.next) { p2d.stat[P2D_MW_ODD]++; return false; }
+  if (p2d.mode != 1) return false;
+  // Drive the pattern byte for the rest of this MEMW, as a memory read drives
+  // its data until MEMR ends (pm_do_memr, with MEMW's pin)
+  pio_sm_put(isa_pio, isa_bus_sm, 0x380d);   // wait 0 gpio 13 (MEMW gone) side 2
+  gpioc_hi_out_clr(1<<PIN_IORDY-32);
+  pio_sm_put(isa_pio, isa_bus_sm, p2d_byte(a - p2d.start));
+  pio_sm_get_blocking(isa_pio, isa_bus_sm);
+  p2d_advance();
+  return true;
+}
+
+// An I/O cycle while armed. True = served (mode 2), the cycle is finished.
+static bool __attribute__((noinline)) __not_in_flash_func(p2d_io)(uint32_t raw, uint32_t nib)
+{
+  uint32_t a = (raw ^ 0x000F00) & 0xFFFFF;
+  p2d.stat[P2D_NIB+(nib&15)]++;
+  if (a < p2d.start || a >= p2d.end) return false;
+  if (nib == 6) p2d.stat[P2D_N6_IN]++;
+  if (nib == CTRL_IOR) p2d.stat[P2D_IOR_IN]++;
+  if (nib != 6 && nib != CTRL_IOR) return false;
+  p2d_note(a, nib);
+  if (p2d.mode != 2 || a != p2d.next) return false;
+  // Answer as an I/O read: the data held until IOR ends (pm_do_ior)
+  pio_sm_put(isa_pio, isa_bus_sm, 0x380e);   // wait 0 gpio 14 (IOR gone) side 2
+  gpioc_hi_out_clr(1<<PIN_IORDY-32);
+  pio_sm_put(isa_pio, isa_bus_sm, p2d_byte(a - p2d.start));
+  pio_sm_get_blocking(isa_pio, isa_bus_sm);
+  p2d_advance();
+  return true;
+}
+#endif
 
 //***********************************************************************************************//
 //*         CORE 1 Main : Wait for the ISA Bus events, emulate RAM and ROM                      *//
@@ -127,6 +173,9 @@ ISA_Do_MEM:
 
   if (IO_CTRL_MDIndex==1)
    {
+#if PM2DMA_PROBE && BOARD_PM20
+   if (p2d.armed) p2d.stat[P2D_NIB+1]++;
+#endif
 // ********** ISA_Cycle=Memory Read (0001b) **********
    if (MEM_Index)    // Read if any emulated Memory is present
         {   //!! Be carefull when optimizing / Overclocking 
@@ -148,6 +197,9 @@ ISA_Do_MEM:
  asm volatile ("nop");
 #endif  
    ISA_Addr = pio_sm_get(isa_pio, isa_bus_sm);  // Read the Address
+#if PM2DMA_PROBE && BOARD_PM20
+   if (p2d.armed && p2d_memw(ISA_Addr, IO_CTRL_MDIndex)) continue;
+#endif
    pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
 
 // ** Write to the PicoMEM Internal RAM
@@ -178,7 +230,13 @@ ISA_Do_IO:  // Goto, from the assembly code
   uint32_t ISA_IO_Addr;
   uint32_t IO_Device;
 
+#if PM2DMA_PROBE && BOARD_PM20
+  uint32_t p2d_raw = pio_sm_get_blocking(isa_pio, isa_bus_sm);
+  ISA_IO_Addr = p2d_raw & 0x3FF;
+  if (p2d.armed && p2d_io(p2d_raw, IO_CTRL_MDIndex)) continue;
+#else
   ISA_IO_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm) & 0x3FF; // No need for Mask (Only the low 8Bit are used)
+#endif
 
   IO_Device = IO_Index_T[ISA_IO_Addr>>3];
 //  pio_sm_put(isa_pio, isa_bus_sm, IO_Device); // First pio put : No Wait State if 0
