@@ -2145,6 +2145,8 @@ BV_PCCMD_SOURCE=0;      // Reset the PCCMD_FLAG
 BV_SPIPSRAM=0;          // Reset the SPI PSRAM Flag
 BV_Int13hCLI=0;
 BV_BoardID=BOARD_ID;    // Set the Board ID
+BV_FW_Rev=0x88;         // Firmware revision, returned in BX by the BIOS function 3 : 8088h,
+BV_FW_Rev_H=0x80;       // the audio is mixed while the disk access waits for the PC
 PM_Status=STAT_READY;   // PicoMEM Initialisation completed (The BIOS Wait for its end)
 PM_Init_Completed=true;
 

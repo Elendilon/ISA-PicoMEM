@@ -43,7 +43,10 @@ set(PICO_BOARD pico_w CACHE STRING "Board type")
 
 # Declare the PicoMEM Board
 
-set(PICOMEM_BOARD "PICOMEM")
+# A CACHE variable, so one tree builds either card without an edit:
+#   1.x (default): -DPICO_BOARD=pico_w -DPICOMEM_BOARD=PICOMEM
+#   2.0:           -DPICO_BOARD=pimoroni_pico_plus2_rp2350 -DPICOMEM_BOARD=PICOMEM_20
+set(PICOMEM_BOARD "PICOMEM" CACHE STRING "PicoMEM board")
 #set(PICOMEM_BOARD "PICOMEM_LP")
 #set(PICOMEM_BOARD "PICOMEM_13")
 #set(PICOMEM_BOARD "PICOMEM_15")
